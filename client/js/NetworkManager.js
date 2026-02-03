@@ -31,21 +31,23 @@ export class NetworkManager {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const url = `${protocol}//${window.location.host}`;
 
+        console.log('Connecting to WebSocket:', url);
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
             this.connected = true;
-            console.log('Connected to server');
+            console.log('WebSocket connected');
         };
 
-        this.ws.onclose = () => {
+        this.ws.onclose = (event) => {
             this.connected = false;
             this.peerConnected = false;
-            console.log('Disconnected from server');
+            console.log('WebSocket disconnected:', event.code, event.reason);
         };
 
         this.ws.onerror = (err) => {
             console.error('WebSocket error:', err);
+            this.connected = false;
         };
 
         this.ws.onmessage = (event) => {

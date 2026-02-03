@@ -163,12 +163,20 @@ class Game {
 
         // Create room button
         document.getElementById('create-room-button').addEventListener('click', () => {
+            console.log('Create room clicked');
             this.network.connect();
             // Wait for connection, then create room
+            let attempts = 0;
             const checkConnection = setInterval(() => {
+                attempts++;
                 if (this.network.connected) {
                     clearInterval(checkConnection);
+                    console.log('Connected, creating room...');
                     this.network.createRoom();
+                } else if (attempts > 50) {
+                    clearInterval(checkConnection);
+                    console.error('Connection timeout');
+                    alert('Could not connect to server. Check console for errors.');
                 }
             }, 100);
         });
@@ -218,10 +226,17 @@ class Game {
 
         this.network.connect();
         // Wait for connection, then join room
+        let attempts = 0;
         const checkConnection = setInterval(() => {
+            attempts++;
             if (this.network.connected) {
                 clearInterval(checkConnection);
+                console.log('Connected, joining room...');
                 this.network.joinRoom(code);
+            } else if (attempts > 50) {
+                clearInterval(checkConnection);
+                console.error('Connection timeout');
+                document.getElementById('join-error').textContent = 'Could not connect to server';
             }
         }, 100);
     }
