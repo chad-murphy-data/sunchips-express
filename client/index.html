@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sun Chips Express</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="ui-overlay">
+            <div id="speedometer">
+                <div id="speed-value">0</div>
+                <div id="speed-label">MPH</div>
+            </div>
+            <div id="timer">00:00.000</div>
+            <div id="controls-hint">
+                <div class="player-controls">
+                    <span class="player-label">P1 (Steering):</span> A/D
+                </div>
+                <div class="player-controls">
+                    <span class="player-label">P2 (Pedals):</span> J/L
+                </div>
+            </div>
+        </div>
+        <div id="start-screen">
+            <h1>SUN CHIPS EXPRESS</h1>
+            <p class="subtitle">Golf Cart Co-Op Racing</p>
+            <div class="instructions">
+                <p><strong>Player 1 (Steering):</strong> A / D keys</p>
+                <p><strong>Player 2 (Pedals):</strong> J (brake) / L (gas)</p>
+            </div>
+            <button id="start-button">START GAME</button>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
