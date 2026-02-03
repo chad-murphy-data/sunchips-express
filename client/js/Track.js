@@ -38,9 +38,9 @@ export class Track {
         };
     }
 
-    // Generate a simple oval track for Level 1
+    // Generate a simple oval track for Level 1 - OFFICE INTERIOR THEME
     generateLevel1() {
-        // Initialize with grass
+        // Initialize with grass (linoleum floor)
         this.tiles = new Array(this.width * this.height).fill(0);
 
         const left = this.roadLeft;
@@ -83,96 +83,176 @@ export class Track {
         // Barrier spacing in world units
         const barrierSpacing = 120;
 
-        // ===== OUTER GUARDRAILS (red/white striped posts) =====
+        // ===== OUTER BARRIERS (cubicle walls and filing cabinets) =====
+        const outerTypes = ['cubicle_wall', 'cubicle_wall_tall', 'filing_cabinet'];
 
         // Outer top edge
         for (let x = outerLeft; x <= outerRight; x += barrierSpacing) {
+            const typeIndex = Math.floor(x / barrierSpacing) % outerTypes.length;
             this.obstacles.push({
                 x: x, y: outerTop,
-                type: (Math.floor(x / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
+                type: outerTypes[typeIndex],
                 scaleX: 1.2, scaleY: 1.2
             });
         }
 
         // Outer bottom edge
         for (let x = outerLeft; x <= outerRight; x += barrierSpacing) {
+            const typeIndex = Math.floor(x / barrierSpacing) % outerTypes.length;
             this.obstacles.push({
                 x: x, y: outerBottom,
-                type: (Math.floor(x / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
+                type: outerTypes[typeIndex],
                 scaleX: 1.2, scaleY: 1.2
             });
         }
 
         // Outer left edge
         for (let y = outerTop; y <= outerBottom; y += barrierSpacing) {
+            const typeIndex = Math.floor(y / barrierSpacing) % outerTypes.length;
             this.obstacles.push({
                 x: outerLeft, y: y,
-                type: (Math.floor(y / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
+                type: outerTypes[typeIndex],
                 scaleX: 1.2, scaleY: 1.2
             });
         }
 
         // Outer right edge
         for (let y = outerTop; y <= outerBottom; y += barrierSpacing) {
+            const typeIndex = Math.floor(y / barrierSpacing) % outerTypes.length;
             this.obstacles.push({
                 x: outerRight, y: y,
-                type: (Math.floor(y / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
+                type: outerTypes[typeIndex],
                 scaleX: 1.2, scaleY: 1.2
             });
         }
 
-        // ===== INNER GUARDRAILS (yellow bollards) =====
-
+        // ===== INNER BARRIERS (filing cabinets - center of office) =====
+        const innerTypes = ['filing_cabinet', 'filing_cabinet_short'];
         const innerSpacing = 140;
 
         // Inner top edge
         for (let x = innerLeftEdge; x <= innerRightEdge; x += innerSpacing) {
+            const typeIndex = Math.floor(x / innerSpacing) % innerTypes.length;
             this.obstacles.push({
                 x: x, y: innerTopEdge,
-                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
+                type: innerTypes[typeIndex],
+                scaleX: 1.0, scaleY: 1.0
             });
         }
 
         // Inner bottom edge
         for (let x = innerLeftEdge; x <= innerRightEdge; x += innerSpacing) {
+            const typeIndex = Math.floor(x / innerSpacing) % innerTypes.length;
             this.obstacles.push({
                 x: x, y: innerBottomEdge,
-                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
+                type: innerTypes[typeIndex],
+                scaleX: 1.0, scaleY: 1.0
             });
         }
 
         // Inner left edge
         for (let y = innerTopEdge; y <= innerBottomEdge; y += innerSpacing) {
+            const typeIndex = Math.floor(y / innerSpacing) % innerTypes.length;
             this.obstacles.push({
                 x: innerLeftEdge, y: y,
-                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
+                type: innerTypes[typeIndex],
+                scaleX: 1.0, scaleY: 1.0
             });
         }
 
         // Inner right edge
         for (let y = innerTopEdge; y <= innerBottomEdge; y += innerSpacing) {
+            const typeIndex = Math.floor(y / innerSpacing) % innerTypes.length;
             this.obstacles.push({
                 x: innerRightEdge, y: y,
-                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
+                type: innerTypes[typeIndex],
+                scaleX: 1.0, scaleY: 1.0
             });
         }
 
-        // ===== DECORATIVE TREES (far from track) =====
-        for (let i = 0; i < 20; i++) {
+        // ===== NEAR-TRACK DECORATION (scattered between barriers) =====
+        const nearTrackTypes = ['office_chair', 'water_cooler', 'printer', 'recycling_bin', 'potted_ficus'];
+        const nearSpacing = 350;
+        const nearOffset = 60; // Push slightly away from track
+
+        // Scattered along outer edges (offset outward)
+        for (let x = outerLeft + 100; x <= outerRight - 100; x += nearSpacing) {
+            // Top side (above track)
+            this.obstacles.push({
+                x: x + (Math.random() - 0.5) * 80,
+                y: outerTop - nearOffset - Math.random() * 40,
+                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
+                scaleX: 1.3, scaleY: 1.3
+            });
+            // Bottom side (below track)
+            this.obstacles.push({
+                x: x + (Math.random() - 0.5) * 80,
+                y: outerBottom + nearOffset + Math.random() * 40,
+                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
+                scaleX: 1.3, scaleY: 1.3
+            });
+        }
+
+        // Scattered along outer left/right
+        for (let y = outerTop + 100; y <= outerBottom - 100; y += nearSpacing) {
+            // Left side
+            this.obstacles.push({
+                x: outerLeft - nearOffset - Math.random() * 40,
+                y: y + (Math.random() - 0.5) * 80,
+                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
+                scaleX: 1.3, scaleY: 1.3
+            });
+            // Right side
+            this.obstacles.push({
+                x: outerRight + nearOffset + Math.random() * 40,
+                y: y + (Math.random() - 0.5) * 80,
+                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
+                scaleX: 1.3, scaleY: 1.3
+            });
+        }
+
+        // ===== FAR DECORATION (office furniture in the distance) =====
+        const farTypes = ['desk_with_monitor', 'whiteboard', 'vending_machine', 'conference_table', 'caution_sign'];
+
+        for (let i = 0; i < 25; i++) {
             const tx = Math.random() * this.width;
             const ty = Math.random() * this.height;
 
             // Only place far from the track
             if (tx < left - 3 || tx > right + w + 3 ||
                 ty < top - 3 || ty > bottom + w + 3) {
+                const type = farTypes[Math.floor(Math.random() * farTypes.length)];
+                // Scale based on object type
+                let scale = 3;
+                if (type === 'vending_machine') scale = 4;
+                if (type === 'conference_table') scale = 3.5;
+                if (type === 'caution_sign') scale = 2.5;
+
                 this.obstacles.push({
                     x: tx * ts,
                     y: ty * ts,
-                    type: Math.random() > 0.5 ? 'tree_large' : 'tree_small',
-                    scaleX: 4,
-                    scaleY: 4
+                    type: type,
+                    scaleX: scale,
+                    scaleY: scale
                 });
             }
+        }
+
+        // Add some scattered caution signs near the track (fun office chaos)
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
+            const radius = 200 + Math.random() * 100;
+            const cx = (left + right + w) / 2 * ts;
+            const cy = (top + bottom + w) / 2 * ts;
+
+            // Place in the center area (inside the track)
+            this.obstacles.push({
+                x: cx + Math.cos(angle) * radius * 2,
+                y: cy + Math.sin(angle) * radius * 2,
+                type: 'caution_sign',
+                scaleX: 2,
+                scaleY: 2
+            });
         }
 
         return this;
