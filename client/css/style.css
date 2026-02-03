@@ -94,6 +94,41 @@ body {
     color: #ff0;
 }
 
+/* Network status displays */
+#room-code-display {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid #4af;
+    border-radius: 8px;
+    padding: 8px 15px;
+    color: #4af;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+#room-code-display:empty {
+    display: none;
+}
+
+#network-role-display {
+    position: absolute;
+    top: 60px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid #4f4;
+    border-radius: 8px;
+    padding: 8px 15px;
+    color: #4f4;
+    font-size: 12px;
+}
+
+#network-role-display:empty {
+    display: none;
+}
+
+/* Start Screen */
 #start-screen {
     position: absolute;
     top: 0;
@@ -134,6 +169,56 @@ body {
     font-size: 16px;
 }
 
+/* Menu buttons */
+.menu-button {
+    background: #334;
+    color: #fff;
+    border: 2px solid #556;
+    padding: 15px 50px;
+    font-size: 18px;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: transform 0.1s, background 0.1s;
+    margin: 8px 0;
+    min-width: 250px;
+}
+
+.menu-button:hover {
+    background: #445;
+    transform: scale(1.02);
+}
+
+.menu-button:active {
+    transform: scale(0.98);
+}
+
+.menu-button.primary {
+    background: #ffd700;
+    color: #000;
+    border-color: #ffd700;
+}
+
+.menu-button.primary:hover {
+    background: #ffed4a;
+}
+
+.menu-button.secondary {
+    background: #444;
+    color: #aaa;
+    border-color: #555;
+    padding: 10px 30px;
+    font-size: 14px;
+    min-width: auto;
+}
+
+.menu-button.secondary:hover {
+    background: #555;
+    color: #fff;
+}
+
+/* Legacy start button support */
 #start-button {
     background: #ffd700;
     color: #000;
@@ -154,4 +239,136 @@ body {
 
 #start-button:active {
     transform: scale(0.95);
+}
+
+/* Divider */
+.divider {
+    color: #666;
+    margin: 20px 0;
+    font-size: 14px;
+    position: relative;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 60px;
+    height: 1px;
+    background: #444;
+}
+
+.divider::before {
+    right: 100%;
+    margin-right: 15px;
+}
+
+.divider::after {
+    left: 100%;
+    margin-left: 15px;
+}
+
+/* Panels */
+.panel {
+    text-align: center;
+}
+
+.panel.hidden {
+    display: none !important;
+}
+
+.panel h2 {
+    font-size: 28px;
+    color: #4af;
+    margin-bottom: 20px;
+}
+
+/* Room code input */
+#room-code-input {
+    font-family: 'Courier New', monospace;
+    font-size: 36px;
+    font-weight: bold;
+    text-align: center;
+    padding: 15px 20px;
+    width: 180px;
+    background: #223;
+    border: 3px solid #4af;
+    border-radius: 8px;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 8px;
+    margin-bottom: 20px;
+}
+
+#room-code-input::placeholder {
+    color: #445;
+    letter-spacing: 8px;
+}
+
+#room-code-input:focus {
+    outline: none;
+    border-color: #6cf;
+    box-shadow: 0 0 15px rgba(68, 170, 255, 0.3);
+}
+
+/* Button row */
+.button-row {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+/* Error text */
+.error-text {
+    color: #f44;
+    font-size: 14px;
+    min-height: 20px;
+}
+
+/* Waiting panel */
+.share-text {
+    color: #aaa;
+    margin-bottom: 15px;
+}
+
+#room-code-large {
+    font-size: 64px;
+    font-weight: bold;
+    color: #ffd700;
+    letter-spacing: 12px;
+    text-shadow: 2px 2px 0 #ff6b00;
+    margin-bottom: 20px;
+}
+
+.status-text {
+    color: #4af;
+    margin-bottom: 25px;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Connected panel */
+#role-text {
+    font-size: 18px;
+    color: #4f4;
+    margin-bottom: 20px;
+}
+
+.countdown-text {
+    font-size: 24px;
+    color: #ffd700;
+    font-weight: bold;
+}
+
+/* Main menu container */
+#main-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }

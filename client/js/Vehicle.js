@@ -16,21 +16,26 @@ export class Vehicle {
         this.COLLISION_RADIUS = 25;      // Half-width of vehicle
         this.COLLISION_FRONT = 35;       // Distance from center to front
 
-        // Physics constants - tuned for golf cart feel
-        this.MAX_SPEED = 300;           // Max forward speed
-        this.MAX_REVERSE_SPEED = 80;    // Much slower reverse
-        this.ACCELERATION = 150;         // Forward acceleration rate
-        this.REVERSE_ACCEL = 60;         // Slow reverse acceleration
-        this.BRAKE_FORCE = 200;          // Braking rate
-        this.FRICTION = 30;              // Natural slowdown
+        // Physics constants - SUPERCAR speed, golf cart handling
+        this.MAX_SPEED = 500;           // Max forward speed - terrifyingly fast
+        this.MAX_REVERSE_SPEED = 60;    // Reverse is punishment (was 80)
+        this.ACCELERATION = 280;         // Rockets off the line (was 150)
+        this.REVERSE_ACCEL = 40;         // Reversing is painfully slow (was 60)
+        this.BRAKE_FORCE = 250;          // Slightly better brakes - they'll need them
+        this.FRICTION = 25;              // Less friction = holds speed on straights
 
-        // Steering constants - reduced for heavier feel
-        this.TURN_RATE = 1.6;            // Base turn rate (radians/sec) - was 2.5
+        // Steering constants - heavy, sluggish feel for co-op frustration
+        this.TURN_RATE = 1.0;            // Base turn rate (radians/sec) - was 1.6
         this.MIN_TURN_SPEED = 0.3;       // Minimum speed ratio for turning
-        this.STEER_RESPONSE = 4.0;       // Angular velocity smoothing (higher = snappier)
+        this.STEER_RESPONSE = 2.5;       // Angular velocity smoothing (was 2.0, tuned for feel)
 
         // Angular velocity for steering inertia
         this.angularVelocity = 0;
+
+        // Wall bounce state
+        this.bounceVx = 0;
+        this.bounceVy = 0;
+        this.bounceDuration = 0;
 
         // Visual state for sprite selection
         this.steerState = 0;  // -1 left, 0 straight, 1 right
@@ -75,6 +80,55 @@ export class Vehicle {
     }
 
     update(dt, steerInput, pedalInput, track) {
+        // ===== WALL BOUNCE (overrides normal movement while active) =====
+        if (this.bounceDuration > 0) {
+            this.bounceDuration -= dt;
+
+            // Apply bounce velocity directly to position
+            this.x += this.bounceVx * dt;
+            this.y += this.bounceVy * dt;
+
+            // Decay bounce velocity (friction) - use tunable value or default
+            const bounceFriction = this._bounceFriction || 0.92;
+            this.bounceVx *= bounceFriction;
+            this.bounceVy *= bounceFriction;
+
+            // During bounce, player can still steer (slowly) to recover angle
+            // but pedal input is ignored — you're just drifting
+            if (steerInput !== 0) {
+                this.heading += steerInput * 0.5 * dt;  // Very slow correction during bounce
+            }
+
+            // Store steer state for sprite rendering
+            this.steerState = steerInput;
+
+            // Check if bounce puts us into another wall (prevent bouncing through walls)
+            // Only check after first frame to let the initial nudge clear us from the wall
+            const bounceTime = this._bounceTime || 0.4;
+            if (track && this.bounceDuration < bounceTime - 0.05) {
+                const bounceCollision = track.checkCollision(this.x, this.y);
+                if (bounceCollision.type === 'wall') {
+                    // Stop the bounce if we'd go into another wall
+                    this.bounceVx = 0;
+                    this.bounceVy = 0;
+                    this.bounceDuration = 0;
+                    // Nudge away from this wall too
+                    this.x += bounceCollision.normalX * 10;
+                    this.y += bounceCollision.normalY * 10;
+                }
+            }
+
+            // If bounce is done or velocity is tiny, clear it
+            if (this.bounceDuration <= 0 ||
+                Math.abs(this.bounceVx) + Math.abs(this.bounceVy) < 5) {
+                this.bounceVx = 0;
+                this.bounceVy = 0;
+                this.bounceDuration = 0;
+            }
+
+            return;  // Skip normal physics during bounce
+        }
+
         // ===== SPEED UPDATE (with reverse support) =====
         if (pedalInput > 0) {
             if (this.speed < 0) {
@@ -110,8 +164,9 @@ export class Vehicle {
         const absSpeed = Math.abs(this.speed);
 
         if (absSpeed > this.MAX_SPEED * this.MIN_TURN_SPEED) {
-            // Speed-dependent turning - harder to turn when fast
-            const speedFactor = 1 - (absSpeed / this.MAX_SPEED) * 0.5;
+            // Speed-dependent turning - much harder to turn when fast
+            const speedTurnReduce = this._speedTurnReduce || 0.7;
+            const speedFactor = 1 - (absSpeed / this.MAX_SPEED) * speedTurnReduce;
             const direction = this.speed >= 0 ? 1 : -1;  // Invert steering when reversing
 
             // Target angular velocity based on input
@@ -126,9 +181,9 @@ export class Vehicle {
             this.angularVelocity += (targetTurnRate - this.angularVelocity) * this.STEER_RESPONSE * dt;
         }
 
-        // Dampen angular velocity when not steering
+        // Dampen angular velocity when not steering (slower damping = more drift)
         if (steerInput === 0) {
-            this.angularVelocity *= (1 - 3.0 * dt);
+            this.angularVelocity *= (1 - 2.0 * dt);
         }
 
         // Apply angular velocity to heading
@@ -162,35 +217,35 @@ export class Vehicle {
             }
 
             if (wallCollision) {
-                // Wall-slide collision response
+                // BACKWARD BOUNCE — wall shoves you back along its normal.
+                // No sliding, no sticking. Just a firm "nope."
                 const vx = Math.cos(this.heading) * this.speed;
                 const vy = Math.sin(this.heading) * this.speed;
-
-                // Dot product with wall normal = component going into wall
                 const normalDot = vx * wallCollision.normalX + vy * wallCollision.normalY;
 
-                // Only respond if we're moving INTO the wall (dot < 0 means approaching)
-                if (normalDot < 0) {
-                    // Remove the into-wall component, keep the along-wall component
-                    const slideVx = vx - normalDot * wallCollision.normalX;
-                    const slideVy = vy - normalDot * wallCollision.normalY;
+                // Always bounce if we're in the wall, regardless of approach angle
+                // Use total speed for bounce calculation, not just into-wall component
+                // This prevents glancing blows from being ignored
+                const impactSpeed = Math.abs(this.speed);
+                const bounceFraction = this._bounceFraction || 0.4;
+                const bounceCap = this._bounceCap || 120;
+                const bounceSpeed = Math.min(impactSpeed * bounceFraction, bounceCap);
 
-                    // Reconstruct speed and heading from slide vector
-                    const newSpeed = Math.sqrt(slideVx * slideVx + slideVy * slideVy);
-                    if (newSpeed > 1) {
-                        this.heading = Math.atan2(slideVy, slideVx);
-                        this.speed = newSpeed;
-                    } else {
-                        this.speed = 0;
-                    }
+                // Set velocity to bounce direction (along wall normal, away from wall)
+                this.speed = 0;  // Kill forward/backward speed
+                this.angularVelocity = 0;  // Kill rotation
 
-                    // Scrape penalty - lose some extra speed on impact
-                    this.speed *= 0.7;
-                }
+                // Apply bounce as direct position velocity
+                // The cart will drift backward along the wall normal
+                this.bounceVx = wallCollision.normalX * bounceSpeed;
+                this.bounceVy = wallCollision.normalY * bounceSpeed;
+                this.bounceDuration = this._bounceTime || 0.4;  // Bounce lasts ~0.4 seconds
 
-                // Minimal nudge away from wall (1 unit - use reverse if stuck)
-                this.x = newX + wallCollision.normalX * 1;
-                this.y = newY + wallCollision.normalY * 1;
+                // Do NOT change heading — nose stays pointed at the wall
+
+                // Nudge out of collision zone (needs to be large enough to clear asymmetric zone)
+                this.x = newX + wallCollision.normalX * 40;
+                this.y = newY + wallCollision.normalY * 40;
 
             } else {
                 // Check for grass (slowdown) at center position
@@ -232,5 +287,28 @@ export class Vehicle {
     // Check if currently reversing
     isReversing() {
         return this.speed < -1;
+    }
+
+    // Interpolate toward a target state (used by guest in network mode)
+    // This provides smooth rendering even when state updates arrive at ~30fps
+    interpolateToward(targetState, lerpFactor = 0.3) {
+        if (!targetState) return;
+
+        // Lerp position
+        this.x += (targetState.x - this.x) * lerpFactor;
+        this.y += (targetState.y - this.y) * lerpFactor;
+
+        // Lerp heading (handling angle wrap-around)
+        let headingDiff = targetState.heading - this.heading;
+        // Normalize to [-PI, PI]
+        while (headingDiff > Math.PI) headingDiff -= Math.PI * 2;
+        while (headingDiff < -Math.PI) headingDiff += Math.PI * 2;
+        this.heading += headingDiff * lerpFactor;
+
+        // Lerp speed
+        this.speed += (targetState.speed - this.speed) * lerpFactor;
+
+        // Directly copy steer state for sprite selection
+        this.steerState = targetState.steerState;
     }
 }

@@ -36,7 +36,7 @@ export class UI {
         this.updateTimerDisplay();
     }
 
-    update(vehicle, rolesSwapped = false) {
+    update(vehicle, rolesSwapped = false, networkRole = null) {
         // Update speedometer
         const speed = vehicle.getSpeedMPH();
         const isReversing = vehicle.isReversing();
@@ -62,7 +62,7 @@ export class UI {
         }
 
         // Update controls hint for role swap
-        this.updateControlsHint(rolesSwapped);
+        this.updateControlsHint(rolesSwapped, networkRole);
     }
 
     updateTimerDisplay() {
@@ -75,8 +75,24 @@ export class UI {
             `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
     }
 
-    updateControlsHint(rolesSwapped) {
-        if (rolesSwapped) {
+    updateControlsHint(rolesSwapped, networkRole = null) {
+        if (networkRole) {
+            // Network mode: only show this player's controls
+            if (networkRole === 'steering') {
+                this.controlsHint.innerHTML = `
+                    <div class="player-controls">
+                        <span class="player-label">You (Steering):</span> A/D
+                    </div>
+                `;
+            } else {
+                this.controlsHint.innerHTML = `
+                    <div class="player-controls">
+                        <span class="player-label">You (Pedals):</span> A/D
+                    </div>
+                    <div style="font-size: 10px; color: #888; margin-top: 4px;">A = brake, D = gas</div>
+                `;
+            }
+        } else if (rolesSwapped) {
             this.controlsHint.innerHTML = `
                 <div class="player-controls">
                     <span class="player-label">P1 (Pedals):</span> A/D

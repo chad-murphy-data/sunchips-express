@@ -23,15 +23,60 @@
                     <span class="player-label">P2 (Pedals):</span> J/L
                 </div>
             </div>
+            <div id="room-code-display"></div>
+            <div id="network-role-display"></div>
         </div>
+
+        <!-- Start/Lobby Screen -->
         <div id="start-screen">
             <h1>SUN CHIPS EXPRESS</h1>
             <p class="subtitle">Golf Cart Co-Op Racing</p>
-            <div class="instructions">
-                <p><strong>Player 1 (Steering):</strong> A / D keys</p>
-                <p><strong>Player 2 (Pedals):</strong> J (brake) / L (gas)</p>
+
+            <!-- Main Menu -->
+            <div id="main-menu">
+                <div class="instructions">
+                    <p><strong>Player 1 (Steering):</strong> A / D keys</p>
+                    <p><strong>Player 2 (Pedals):</strong> J (brake) / L (gas)</p>
+                </div>
+                <button id="local-coop-button" class="menu-button primary">LOCAL CO-OP</button>
+                <div class="divider">or play online</div>
+                <button id="create-room-button" class="menu-button">CREATE ROOM</button>
+                <button id="join-room-button" class="menu-button">JOIN ROOM</button>
             </div>
-            <button id="start-button">START GAME</button>
+
+            <!-- Join Room Input -->
+            <div id="join-room-panel" class="panel hidden">
+                <h2>JOIN ROOM</h2>
+                <input type="text" id="room-code-input" maxlength="4" placeholder="XXXX" autocomplete="off">
+                <div class="button-row">
+                    <button id="join-submit-button" class="menu-button primary">JOIN</button>
+                    <button id="join-back-button" class="menu-button secondary">BACK</button>
+                </div>
+                <p id="join-error" class="error-text"></p>
+            </div>
+
+            <!-- Waiting for Player -->
+            <div id="waiting-panel" class="panel hidden">
+                <h2>ROOM CREATED</h2>
+                <p class="share-text">Share this code with your partner:</p>
+                <div id="room-code-large"></div>
+                <p class="status-text">Waiting for player to join...</p>
+                <button id="waiting-back-button" class="menu-button secondary">CANCEL</button>
+            </div>
+
+            <!-- Connected - Ready to Start -->
+            <div id="connected-panel" class="panel hidden">
+                <h2>CONNECTED!</h2>
+                <p id="role-text"></p>
+                <p class="countdown-text" id="countdown-text">Starting in 3...</p>
+            </div>
+
+            <!-- Disconnected Message -->
+            <div id="disconnected-panel" class="panel hidden">
+                <h2>DISCONNECTED</h2>
+                <p>Your partner left the game.</p>
+                <button id="disconnected-back-button" class="menu-button primary">BACK TO MENU</button>
+            </div>
         </div>
     </div>
 

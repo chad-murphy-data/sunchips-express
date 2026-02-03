@@ -14,8 +14,12 @@ export class InputHandler {
             l: false,
         };
 
-        // Role swap support
+        // Role swap support (for local co-op)
         this.rolesSwapped = false;
+
+        // Network mode settings
+        this.networkMode = false;
+        this.networkRole = null;  // 'steering' or 'pedals'
 
         this.setupListeners();
     }
@@ -38,11 +42,18 @@ export class InputHandler {
         });
     }
 
+    // Configure for network play
+    setNetworkMode(enabled, role = null) {
+        this.networkMode = enabled;
+        this.networkRole = role;
+    }
+
     swapRoles() {
         this.rolesSwapped = !this.rolesSwapped;
     }
 
     // Get steering input (-1 = left, 0 = straight, 1 = right)
+    // Used in local co-op mode
     getSteering() {
         let left, right;
 
@@ -62,6 +73,7 @@ export class InputHandler {
     }
 
     // Get pedal input (-1 = brake, 0 = coast, 1 = accelerate)
+    // Used in local co-op mode
     getPedals() {
         let accel, brake;
 
@@ -78,6 +90,26 @@ export class InputHandler {
         if (accel && !brake) return 1;
         if (brake && !accel) return -1;
         return 0;
+    }
+
+    // Get local input for network mode
+    // In network mode, both players use A/D
+    // The role determines what A/D does
+    getLocalInput() {
+        const left = this.keys.a;
+        const right = this.keys.d;
+
+        if (this.networkRole === 'steering') {
+            // A = left, D = right
+            if (left && !right) return -1;
+            if (right && !left) return 1;
+            return 0;
+        } else {
+            // A = brake, D = accelerate
+            if (right && !left) return 1;
+            if (left && !right) return -1;
+            return 0;
+        }
     }
 
     // Check if any action key is pressed (for mashing during delivery)

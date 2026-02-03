@@ -8,6 +8,8 @@ import { Mode7Renderer } from './Mode7Renderer.js';
 import { SpriteRenderer } from './SpriteRenderer.js';
 import { Track } from './Track.js';
 import { UI } from './UI.js';
+import { DebugPanel } from './DebugPanel.js';
+import { NetworkManager } from './NetworkManager.js';
 
 class Game {
     constructor() {
@@ -22,6 +24,15 @@ class Game {
         this.running = false;
         this.lastTime = 0;
 
+        // Network mode: 'local', 'host', or 'guest'
+        this.mode = 'local';
+
+        // Network manager
+        this.network = new NetworkManager();
+
+        // Frame counter for state send throttling
+        this.frameCount = 0;
+
         // Components (initialized after assets load)
         this.assets = null;
         this.input = null;
@@ -31,6 +42,18 @@ class Game {
         this.sprites = null;
         this.track = null;
         this.ui = null;
+        this.debugPanel = null;
+
+        // UI elements for lobby
+        this.startScreen = document.getElementById('start-screen');
+        this.mainMenu = document.getElementById('main-menu');
+        this.joinRoomPanel = document.getElementById('join-room-panel');
+        this.waitingPanel = document.getElementById('waiting-panel');
+        this.connectedPanel = document.getElementById('connected-panel');
+        this.disconnectedPanel = document.getElementById('disconnected-panel');
+
+        this.roomCodeDisplay = document.getElementById('room-code-display');
+        this.networkRoleDisplay = document.getElementById('network-role-display');
     }
 
     async init() {
@@ -61,20 +84,242 @@ class Game {
         // UI
         this.ui = new UI();
 
+        // Debug tuning panel (press ` to toggle)
+        this.debugPanel = new DebugPanel(this.vehicle, this.track);
+        this.debugPanel.setCamera(this.camera);
+
         console.log('Game initialized');
 
-        // Set up start button
-        const startButton = document.getElementById('start-button');
-        const startScreen = document.getElementById('start-screen');
+        // Set up network callbacks
+        this.setupNetworkCallbacks();
 
-        startButton.addEventListener('click', () => {
-            startScreen.style.display = 'none';
-            this.ui.show();
-            this.ui.startTimer();
-            this.running = true;
-            this.lastTime = performance.now();
-            this.gameLoop();
+        // Set up lobby buttons
+        this.setupLobbyUI();
+    }
+
+    setupNetworkCallbacks() {
+        this.network.onRoomCreated = (code) => {
+            document.getElementById('room-code-large').textContent = code;
+            this.showPanel('waiting');
+        };
+
+        this.network.onRoomJoined = (role) => {
+            this.mode = role === 'host' ? 'host' : 'guest';
+
+            // Configure input handler for network mode
+            this.input.setNetworkMode(true, role === 'host' ? 'steering' : 'pedals');
+
+            // Show connected panel
+            const roleText = document.getElementById('role-text');
+            if (role === 'host') {
+                roleText.textContent = 'You are the DRIVER (Steering with A/D)';
+            } else {
+                roleText.textContent = 'You are the PASSENGER (Pedals with A/D)';
+            }
+            this.showPanel('connected');
+
+            // Start countdown
+            this.startCountdown();
+        };
+
+        this.network.onGameState = (state) => {
+            // Guest receives state from host
+            if (this.mode === 'guest') {
+                this.vehicle.interpolateToward(state);
+            }
+        };
+
+        this.network.onGameStart = () => {
+            // Guest receives game start signal
+            if (this.mode === 'guest') {
+                this.startGame();
+            }
+        };
+
+        this.network.onRoleSwap = () => {
+            // Both players swap roles
+            this.input.swapRoles();
+            const currentRole = this.input.networkRole;
+            this.input.networkRole = currentRole === 'steering' ? 'pedals' : 'steering';
+        };
+
+        this.network.onPeerDisconnected = () => {
+            this.running = false;
+            this.showPanel('disconnected');
+        };
+
+        this.network.onError = (message) => {
+            document.getElementById('join-error').textContent = message;
+        };
+    }
+
+    setupLobbyUI() {
+        // Local co-op button
+        document.getElementById('local-coop-button').addEventListener('click', () => {
+            this.mode = 'local';
+            this.input.setNetworkMode(false);
+            this.startGame();
         });
+
+        // Create room button
+        document.getElementById('create-room-button').addEventListener('click', () => {
+            this.network.connect();
+            // Wait for connection, then create room
+            const checkConnection = setInterval(() => {
+                if (this.network.connected) {
+                    clearInterval(checkConnection);
+                    this.network.createRoom();
+                }
+            }, 100);
+        });
+
+        // Join room button (show input panel)
+        document.getElementById('join-room-button').addEventListener('click', () => {
+            this.showPanel('join');
+            document.getElementById('room-code-input').focus();
+        });
+
+        // Join submit button
+        document.getElementById('join-submit-button').addEventListener('click', () => {
+            this.submitJoinRoom();
+        });
+
+        // Room code input - submit on Enter
+        document.getElementById('room-code-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.submitJoinRoom();
+            }
+        });
+
+        // Back buttons
+        document.getElementById('join-back-button').addEventListener('click', () => {
+            this.showPanel('main');
+        });
+
+        document.getElementById('waiting-back-button').addEventListener('click', () => {
+            this.network.disconnect();
+            this.showPanel('main');
+        });
+
+        document.getElementById('disconnected-back-button').addEventListener('click', () => {
+            this.network.disconnect();
+            this.resetGame();
+            this.showPanel('main');
+        });
+    }
+
+    submitJoinRoom() {
+        const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+        if (code.length !== 4) {
+            document.getElementById('join-error').textContent = 'Enter a 4-character code';
+            return;
+        }
+        document.getElementById('join-error').textContent = '';
+
+        this.network.connect();
+        // Wait for connection, then join room
+        const checkConnection = setInterval(() => {
+            if (this.network.connected) {
+                clearInterval(checkConnection);
+                this.network.joinRoom(code);
+            }
+        }, 100);
+    }
+
+    showPanel(panel) {
+        // Hide all panels
+        this.mainMenu.classList.add('hidden');
+        this.joinRoomPanel.classList.add('hidden');
+        this.waitingPanel.classList.add('hidden');
+        this.connectedPanel.classList.add('hidden');
+        this.disconnectedPanel.classList.add('hidden');
+
+        // Show requested panel
+        switch (panel) {
+            case 'main':
+                this.mainMenu.classList.remove('hidden');
+                break;
+            case 'join':
+                this.joinRoomPanel.classList.remove('hidden');
+                document.getElementById('room-code-input').value = '';
+                document.getElementById('join-error').textContent = '';
+                break;
+            case 'waiting':
+                this.waitingPanel.classList.remove('hidden');
+                break;
+            case 'connected':
+                this.connectedPanel.classList.remove('hidden');
+                break;
+            case 'disconnected':
+                this.disconnectedPanel.classList.remove('hidden');
+                break;
+        }
+    }
+
+    startCountdown() {
+        let count = 3;
+        const countdownText = document.getElementById('countdown-text');
+        countdownText.textContent = `Starting in ${count}...`;
+
+        const interval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownText.textContent = `Starting in ${count}...`;
+            } else {
+                clearInterval(interval);
+                countdownText.textContent = 'GO!';
+
+                // Host sends game start signal
+                if (this.mode === 'host') {
+                    this.network.sendGameStart();
+                }
+
+                // Start the game after a brief moment
+                setTimeout(() => {
+                    this.startGame();
+                }, 500);
+            }
+        }, 1000);
+    }
+
+    startGame() {
+        this.startScreen.style.display = 'none';
+        this.ui.show();
+        this.ui.startTimer();
+
+        // Show network info in UI if networked
+        if (this.mode !== 'local' && this.network.roomCode) {
+            this.roomCodeDisplay.textContent = `Room: ${this.network.roomCode}`;
+            this.networkRoleDisplay.textContent = this.mode === 'host'
+                ? 'Host (Steering)'
+                : 'Guest (Pedals)';
+        }
+
+        this.running = true;
+        this.lastTime = performance.now();
+        this.gameLoop();
+    }
+
+    resetGame() {
+        // Reset vehicle to start position
+        const start = this.track.getStartPosition();
+        this.vehicle.x = start.x;
+        this.vehicle.y = start.y;
+        this.vehicle.heading = start.heading;
+        this.vehicle.speed = 0;
+        this.vehicle.angularVelocity = 0;
+
+        // Reset camera
+        this.camera.follow(this.vehicle, true);
+
+        // Reset UI
+        this.ui.resetTimer();
+        this.ui.hide();
+        this.roomCodeDisplay.textContent = '';
+        this.networkRoleDisplay.textContent = '';
+
+        // Show start screen
+        this.startScreen.style.display = 'flex';
     }
 
     gameLoop() {
@@ -87,22 +332,56 @@ class Game {
         this.update(dt);
         this.render();
 
+        this.frameCount++;
         requestAnimationFrame(() => this.gameLoop());
     }
 
     update(dt) {
-        // Get input
-        const steering = this.input.getSteering();
-        const pedals = this.input.getPedals();
+        if (this.mode === 'local') {
+            // Local co-op: both players on same keyboard
+            const steering = this.input.getSteering();
+            const pedals = this.input.getPedals();
+            this.vehicle.update(dt, steering, pedals, this.track);
+        } else if (this.mode === 'host') {
+            // Host: runs physics, combines local + remote input
+            const localInput = this.input.getLocalInput();
+            const remoteInput = this.network.guestInput;
 
-        // Update vehicle
-        this.vehicle.update(dt, steering, pedals, this.track);
+            // Host controls steering, guest controls pedals (initially)
+            const steering = this.input.networkRole === 'steering'
+                ? localInput
+                : remoteInput.steering;
+            const pedals = this.input.networkRole === 'pedals'
+                ? localInput
+                : remoteInput.pedals;
+
+            this.vehicle.update(dt, steering, pedals, this.track);
+
+            // Send state to guest every other frame (~30fps)
+            if (this.frameCount % 2 === 0) {
+                this.network.sendGameState(this.vehicle);
+            }
+        } else if (this.mode === 'guest') {
+            // Guest: sends input, interpolates toward received state
+            const localInput = this.input.getLocalInput();
+
+            // Guest controls pedals initially
+            if (this.input.networkRole === 'steering') {
+                this.network.sendInput(localInput, 0);
+            } else {
+                this.network.sendInput(0, localInput);
+            }
+
+            // Interpolate vehicle toward latest received state
+            // The vehicle already gets updated via onGameState callback
+        }
 
         // Update camera to follow vehicle
         this.camera.follow(this.vehicle);
 
         // Update UI
-        this.ui.update(this.vehicle, this.input.rolesSwapped);
+        const networkRole = this.mode !== 'local' ? this.input.networkRole : null;
+        this.ui.update(this.vehicle, this.input.rolesSwapped, networkRole);
     }
 
     render() {
