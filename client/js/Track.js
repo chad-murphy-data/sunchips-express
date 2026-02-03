@@ -23,7 +23,7 @@ export class Track {
         this.roadWidth = 3; // tiles wide
 
         // Guardrail collision width (in world units)
-        this.guardrailWidth = 20;
+        this.guardrailWidth = 50;
 
         // Tile type to asset mapping
         this.tileAssets = {
@@ -69,112 +69,91 @@ export class Track {
         // Initialize obstacles array
         this.obstacles = [];
 
-        // Barrier spacing in world units (wider gaps for cleaner look)
+        // === Authoritative edge positions (world units) ===
+        const outerTop = top * ts;
+        const outerBottom = (bottom + w) * ts;
+        const outerLeft = left * ts;
+        const outerRight = (right + w) * ts;
+
+        const innerTopEdge = (top + w) * ts;
+        const innerBottomEdge = bottom * ts;
+        const innerLeftEdge = (left + w) * ts;
+        const innerRightEdge = right * ts;
+
+        // Barrier spacing in world units
         const barrierSpacing = 120;
 
         // ===== OUTER GUARDRAILS (red/white striped posts) =====
 
         // Outer top edge
-        const outerTopY = (top - 0.1) * ts;
-        for (let x = left * ts; x <= (right + w) * ts; x += barrierSpacing) {
+        for (let x = outerLeft; x <= outerRight; x += barrierSpacing) {
             this.obstacles.push({
-                x: x,
-                y: outerTopY,
+                x: x, y: outerTop,
                 type: (Math.floor(x / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
-                scaleX: 1.2,
-                scaleY: 1.2
+                scaleX: 1.2, scaleY: 1.2
             });
         }
 
         // Outer bottom edge
-        const outerBottomY = (bottom + w + 0.1) * ts;
-        for (let x = left * ts; x <= (right + w) * ts; x += barrierSpacing) {
+        for (let x = outerLeft; x <= outerRight; x += barrierSpacing) {
             this.obstacles.push({
-                x: x,
-                y: outerBottomY,
+                x: x, y: outerBottom,
                 type: (Math.floor(x / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
-                scaleX: 1.2,
-                scaleY: 1.2
+                scaleX: 1.2, scaleY: 1.2
             });
         }
 
         // Outer left edge
-        const outerLeftX = (left - 0.1) * ts;
-        for (let y = top * ts; y <= (bottom + w) * ts; y += barrierSpacing) {
+        for (let y = outerTop; y <= outerBottom; y += barrierSpacing) {
             this.obstacles.push({
-                x: outerLeftX,
-                y: y,
+                x: outerLeft, y: y,
                 type: (Math.floor(y / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
-                scaleX: 1.2,
-                scaleY: 1.2
+                scaleX: 1.2, scaleY: 1.2
             });
         }
 
         // Outer right edge
-        const outerRightX = (right + w + 0.1) * ts;
-        for (let y = top * ts; y <= (bottom + w) * ts; y += barrierSpacing) {
+        for (let y = outerTop; y <= outerBottom; y += barrierSpacing) {
             this.obstacles.push({
-                x: outerRightX,
-                y: y,
+                x: outerRight, y: y,
                 type: (Math.floor(y / barrierSpacing) % 2 === 0) ? 'guardrail_red' : 'guardrail_white',
-                scaleX: 1.2,
-                scaleY: 1.2
+                scaleX: 1.2, scaleY: 1.2
             });
         }
 
         // ===== INNER GUARDRAILS (yellow bollards) =====
 
-        const innerLeft = left + w;
-        const innerRight = right;
-        const innerTop = top + w;
-        const innerBottom = bottom;
         const innerSpacing = 140;
 
         // Inner top edge
-        const innerTopY = (innerTop + 0.1) * ts;
-        for (let x = innerLeft * ts; x <= innerRight * ts; x += innerSpacing) {
+        for (let x = innerLeftEdge; x <= innerRightEdge; x += innerSpacing) {
             this.obstacles.push({
-                x: x,
-                y: innerTopY,
-                type: 'guardrail_yellow',
-                scaleX: 1.0,
-                scaleY: 1.0
+                x: x, y: innerTopEdge,
+                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
             });
         }
 
         // Inner bottom edge
-        const innerBottomY = (innerBottom + 0.1) * ts;
-        for (let x = innerLeft * ts; x <= innerRight * ts; x += innerSpacing) {
+        for (let x = innerLeftEdge; x <= innerRightEdge; x += innerSpacing) {
             this.obstacles.push({
-                x: x,
-                y: innerBottomY,
-                type: 'guardrail_yellow',
-                scaleX: 1.0,
-                scaleY: 1.0
+                x: x, y: innerBottomEdge,
+                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
             });
         }
 
         // Inner left edge
-        const innerLeftX = (innerLeft + 0.1) * ts;
-        for (let y = innerTop * ts; y <= innerBottom * ts; y += innerSpacing) {
+        for (let y = innerTopEdge; y <= innerBottomEdge; y += innerSpacing) {
             this.obstacles.push({
-                x: innerLeftX,
-                y: y,
-                type: 'guardrail_yellow',
-                scaleX: 1.0,
-                scaleY: 1.0
+                x: innerLeftEdge, y: y,
+                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
             });
         }
 
         // Inner right edge
-        const innerRightX = (innerRight + 0.1) * ts;
-        for (let y = innerTop * ts; y <= innerBottom * ts; y += innerSpacing) {
+        for (let y = innerTopEdge; y <= innerBottomEdge; y += innerSpacing) {
             this.obstacles.push({
-                x: innerRightX,
-                y: y,
-                type: 'guardrail_yellow',
-                scaleX: 1.0,
-                scaleY: 1.0
+                x: innerRightEdge, y: y,
+                type: 'guardrail_yellow', scaleX: 1.0, scaleY: 1.0
             });
         }
 
@@ -200,6 +179,7 @@ export class Track {
     }
 
     // Check if a world position is on a guardrail - returns wall normal for collision response
+    // Asymmetric collision zone: 70% extends into road, 30% extends outward
     isOnGuardrail(worldX, worldY) {
         const tileX = worldX / this.tileSize;
         const tileY = worldY / this.tileSize;
@@ -210,47 +190,49 @@ export class Track {
         const bottom = this.roadBottom;
         const w = this.roadWidth;
 
-        // Guardrail width in tiles
-        const gw = this.guardrailWidth / this.tileSize;
+        // Asymmetric collision zone in tiles
+        const fullWidth = this.guardrailWidth / this.tileSize;
+        const inward = fullWidth * 0.7;   // 70% extends into road
+        const outward = fullWidth * 0.3;  // 30% extends outside
 
-        // Check outer guardrails - return normal pointing INTO the track
-        // Top outer (normal points down, into track)
-        if (tileY >= top - gw && tileY < top && tileX >= left - gw && tileX <= right + w + gw) {
+        // Check outer guardrails — asymmetric zone biased into road
+        // Top outer (edge at tileY = top) - inward = +Y (down into road), outward = -Y
+        if (tileY >= top - outward && tileY <= top + inward && tileX >= left - outward && tileX <= right + w + outward) {
             return { side: 'outer', normalX: 0, normalY: 1 };
         }
-        // Bottom outer (normal points up, into track)
-        if (tileY > bottom + w && tileY <= bottom + w + gw && tileX >= left - gw && tileX <= right + w + gw) {
+        // Bottom outer (edge at tileY = bottom + w) - inward = -Y (up into road), outward = +Y
+        if (tileY >= bottom + w - inward && tileY <= bottom + w + outward && tileX >= left - outward && tileX <= right + w + outward) {
             return { side: 'outer', normalX: 0, normalY: -1 };
         }
-        // Left outer (normal points right, into track)
-        if (tileX >= left - gw && tileX < left && tileY >= top - gw && tileY <= bottom + w + gw) {
+        // Left outer (edge at tileX = left) - inward = +X (right into road), outward = -X
+        if (tileX >= left - outward && tileX <= left + inward && tileY >= top - outward && tileY <= bottom + w + outward) {
             return { side: 'outer', normalX: 1, normalY: 0 };
         }
-        // Right outer (normal points left, into track)
-        if (tileX > right + w && tileX <= right + w + gw && tileY >= top - gw && tileY <= bottom + w + gw) {
+        // Right outer (edge at tileX = right + w) - inward = -X (left into road), outward = +X
+        if (tileX >= right + w - inward && tileX <= right + w + outward && tileY >= top - outward && tileY <= bottom + w + outward) {
             return { side: 'outer', normalX: -1, normalY: 0 };
         }
 
-        // Check inner guardrails - normal points OUTWARD from center (into the track)
+        // Check inner guardrails
         const innerLeft = left + w;
         const innerRight = right;
         const innerTop = top + w;
         const innerBottom = bottom;
 
-        // Inner top (normal points up, away from center)
-        if (tileY > innerTop - gw && tileY <= innerTop && tileX >= innerLeft && tileX <= innerRight) {
+        // Inner top (edge at tileY = innerTop) - inward = -Y (up into road), outward = +Y
+        if (tileY >= innerTop - inward && tileY <= innerTop + outward && tileX >= innerLeft - outward && tileX <= innerRight + outward) {
             return { side: 'inner', normalX: 0, normalY: -1 };
         }
-        // Inner bottom (normal points down, away from center)
-        if (tileY >= innerBottom && tileY < innerBottom + gw && tileX >= innerLeft && tileX <= innerRight) {
+        // Inner bottom (edge at tileY = innerBottom) - inward = +Y (down into road), outward = -Y
+        if (tileY >= innerBottom - outward && tileY <= innerBottom + inward && tileX >= innerLeft - outward && tileX <= innerRight + outward) {
             return { side: 'inner', normalX: 0, normalY: 1 };
         }
-        // Inner left (normal points left, away from center)
-        if (tileX > innerLeft - gw && tileX <= innerLeft && tileY >= innerTop && tileY <= innerBottom) {
+        // Inner left (edge at tileX = innerLeft) - inward = -X (left into road), outward = +X
+        if (tileX >= innerLeft - inward && tileX <= innerLeft + outward && tileY >= innerTop - outward && tileY <= innerBottom + outward) {
             return { side: 'inner', normalX: -1, normalY: 0 };
         }
-        // Inner right (normal points right, away from center)
-        if (tileX >= innerRight && tileX < innerRight + gw && tileY >= innerTop && tileY <= innerBottom) {
+        // Inner right (edge at tileX = innerRight) - inward = +X (right into road), outward = -X
+        if (tileX >= innerRight - outward && tileX <= innerRight + inward && tileY >= innerTop - outward && tileY <= innerBottom + outward) {
             return { side: 'inner', normalX: 1, normalY: 0 };
         }
 

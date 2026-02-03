@@ -93,43 +93,58 @@ export class Mode7Renderer {
         const bottom = track.roadBottom;
         const w = track.roadWidth;
 
-        // Stripe width (thin curb line - the 3D barriers sit on top)
+        // Stripe width for the painted curb line
         const stripeWidth = 6;
+        const halfStripe = stripeWidth / 2;
 
-        // Outer guardrails (red/white alternating pattern)
+        // === Authoritative edge positions (world units) ===
+        const outerTop = top * ts;
+        const outerBottom = (bottom + w) * ts;
+        const outerLeft = left * ts;
+        const outerRight = (right + w) * ts;
+
+        const innerTop = (top + w) * ts;
+        const innerBottom = bottom * ts;
+        const innerLeft = (left + w) * ts;
+        const innerRight = right * ts;
+
+        // Outer guardrails (red) — stripe centered on edge
         ctx.fillStyle = '#FF0000';
 
-        // Top outer edge
-        ctx.fillRect(left * ts - stripeWidth, top * ts - stripeWidth, (right - left + 1) * ts + stripeWidth * 2, stripeWidth);
+        // Top outer edge (horizontal stripe centered on outerTop)
+        ctx.fillRect(outerLeft - halfStripe, outerTop - halfStripe,
+                     outerRight - outerLeft + stripeWidth, stripeWidth);
 
         // Bottom outer edge
-        ctx.fillRect(left * ts - stripeWidth, (bottom + w) * ts, (right - left + w + 1) * ts + stripeWidth * 2, stripeWidth);
+        ctx.fillRect(outerLeft - halfStripe, outerBottom - halfStripe,
+                     outerRight - outerLeft + stripeWidth, stripeWidth);
 
         // Left outer edge
-        ctx.fillRect(left * ts - stripeWidth, top * ts - stripeWidth, stripeWidth, (bottom - top + w + 1) * ts + stripeWidth * 2);
+        ctx.fillRect(outerLeft - halfStripe, outerTop - halfStripe,
+                     stripeWidth, outerBottom - outerTop + stripeWidth);
 
         // Right outer edge
-        ctx.fillRect((right + w) * ts, top * ts - stripeWidth, stripeWidth, (bottom - top + w + 1) * ts + stripeWidth * 2);
+        ctx.fillRect(outerRight - halfStripe, outerTop - halfStripe,
+                     stripeWidth, outerBottom - outerTop + stripeWidth);
 
-        // Inner guardrails (yellow)
+        // Inner guardrails (yellow) — stripe centered on edge
         ctx.fillStyle = '#FFD700';
 
-        const innerLeft = left + w;
-        const innerRight = right;
-        const innerTop = top + w;
-        const innerBottom = bottom;
-
         // Inner top
-        ctx.fillRect(innerLeft * ts, innerTop * ts - stripeWidth, (innerRight - innerLeft) * ts, stripeWidth);
+        ctx.fillRect(innerLeft, innerTop - halfStripe,
+                     innerRight - innerLeft, stripeWidth);
 
         // Inner bottom
-        ctx.fillRect(innerLeft * ts, innerBottom * ts, (innerRight - innerLeft) * ts, stripeWidth);
+        ctx.fillRect(innerLeft, innerBottom - halfStripe,
+                     innerRight - innerLeft, stripeWidth);
 
         // Inner left
-        ctx.fillRect(innerLeft * ts - stripeWidth, innerTop * ts, stripeWidth, (innerBottom - innerTop) * ts);
+        ctx.fillRect(innerLeft - halfStripe, innerTop,
+                     stripeWidth, innerBottom - innerTop);
 
         // Inner right
-        ctx.fillRect(innerRight * ts, innerTop * ts, stripeWidth, (innerBottom - innerTop) * ts);
+        ctx.fillRect(innerRight - halfStripe, innerTop,
+                     stripeWidth, innerBottom - innerTop);
 
         // Add white dashed center line on the road
         ctx.strokeStyle = '#FFFFFF';
@@ -141,13 +156,13 @@ export class Mode7Renderer {
         const roadCenterY_bottom = (bottom + w / 2) * ts;
 
         ctx.beginPath();
-        ctx.moveTo((left + w) * ts, roadCenterY_top);
-        ctx.lineTo(right * ts, roadCenterY_top);
+        ctx.moveTo(innerLeft, roadCenterY_top);
+        ctx.lineTo(innerRight, roadCenterY_top);
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo((left + w) * ts, roadCenterY_bottom);
-        ctx.lineTo(right * ts, roadCenterY_bottom);
+        ctx.moveTo(innerLeft, roadCenterY_bottom);
+        ctx.lineTo(innerRight, roadCenterY_bottom);
         ctx.stroke();
 
         // Center line on vertical sections
@@ -155,13 +170,13 @@ export class Mode7Renderer {
         const roadCenterX_right = (right + w / 2) * ts;
 
         ctx.beginPath();
-        ctx.moveTo(roadCenterX_left, (top + w) * ts);
-        ctx.lineTo(roadCenterX_left, bottom * ts);
+        ctx.moveTo(roadCenterX_left, innerTop);
+        ctx.lineTo(roadCenterX_left, innerBottom);
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo(roadCenterX_right, (top + w) * ts);
-        ctx.lineTo(roadCenterX_right, bottom * ts);
+        ctx.moveTo(roadCenterX_right, innerTop);
+        ctx.lineTo(roadCenterX_right, innerBottom);
         ctx.stroke();
 
         ctx.setLineDash([]);
@@ -240,7 +255,7 @@ export class Mode7Renderer {
                 const color = this.sampleGround(worldX, worldY);
 
                 // Apply distance fog
-                const fogFactor = Math.min(1, distance / 800);
+                const fogFactor = Math.min(1, distance / 1200);
                 const fogR = 135, fogG = 206, fogB = 235; // Match horizon color
 
                 const pixelIdx = (screenY * this.width + screenX) * 4;

@@ -30,8 +30,9 @@ export class SpriteRenderer {
             return null;  // Behind camera
         }
 
-        // Horizontal position — matches Mode7's lineWidth = distance * 1.5
-        const focalLength = this.width / 1.5;
+        // Horizontal position — matches Mode7's effective projection
+        // Mode7 uses nx = lateral / (distance * 1.5), so focalLength = width/3
+        const focalLength = this.width / 3;
         const screenX = this.width / 2 + lateral * (focalLength / depth);
 
         // Vertical position — matches Mode7's scanline-to-distance formula
@@ -56,7 +57,7 @@ export class SpriteRenderer {
         for (const sprite of sprites) {
             const screen = this.worldToScreen(sprite.x, sprite.y, camera);
 
-            if (screen && screen.depth > 10 && screen.depth < 1000) {
+            if (screen && screen.depth > 10 && screen.depth < 2000) {
                 visibleSprites.push({
                     ...sprite,
                     screenX: screen.x,
@@ -82,7 +83,7 @@ export class SpriteRenderer {
             const worldScaleY = sprite.scaleY || 1;
 
             // Base size in pixels, scaled by perspective
-            const baseSize = 6; // Base reference size for sprites
+            const baseSize = 12; // Base reference size for sprites
             const perspectiveSize = baseSize * sprite.scale;
 
             const drawWidth = perspectiveSize * worldScaleX;
