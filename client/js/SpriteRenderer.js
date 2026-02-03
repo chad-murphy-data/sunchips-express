@@ -17,38 +17,34 @@ export class SpriteRenderer {
         const dx = worldX - camera.x;
         const dy = worldY - camera.y;
 
-        // Rotate to camera space
-        const cos = Math.cos(-camera.angle);
-        const sin = Math.sin(-camera.angle);
-        const rx = dx * cos - dy * sin;
-        const ry = dx * sin + dy * cos;
+        // Project into camera space using Mode7's coordinate convention:
+        //   forward = (cos(angle), sin(angle))
+        //   right   = (-sin(angle), cos(angle))
+        const cos = Math.cos(camera.angle);
+        const sin = Math.sin(camera.angle);
 
-        // ry is now the depth (distance in front of camera)
-        // rx is the horizontal offset
+        const depth = dx * cos + dy * sin;      // Distance ahead of camera
+        const lateral = -dx * sin + dy * cos;   // Distance to the right of camera
 
-        if (ry <= 0) {
-            // Behind camera
-            return null;
+        if (depth <= 0) {
+            return null;  // Behind camera
         }
 
-        // Position projection — MUST match Mode7Renderer's ground plane
-        // Mode7 uses lineWidth = distance * 1.5, so effective focal length = width / 1.5
+        // Horizontal position — matches Mode7's lineWidth = distance * 1.5
         const focalLength = this.width / 1.5;
-        const screenX = this.width / 2 + rx * (focalLength / ry);
+        const screenX = this.width / 2 + lateral * (focalLength / depth);
 
-        // Y position: further objects should be closer to horizon
-        // Objects at ground level appear at the scanline where Mode7 renders that distance
-        const groundY = this.horizonY + (camera.height * this.height) / (ry * 2);
+        // Vertical position — matches Mode7's scanline-to-distance formula
+        const groundY = this.horizonY + (camera.height * this.height) / (depth * 2);
 
-        // Scale for sprite sizing — independent of position focal length
-        // This controls how big sprites draw, not where they are
-        const sizeScale = (camera.height * this.height) / (ry * 2) / 100;
+        // Sprite sizing — perspective scale based on depth
+        const sizeScale = (camera.height * this.height) / (depth * 2) / 100;
 
         return {
             x: screenX,
             y: groundY,
             scale: sizeScale,
-            depth: ry
+            depth: depth
         };
     }
 
@@ -86,7 +82,7 @@ export class SpriteRenderer {
             const worldScaleY = sprite.scaleY || 1;
 
             // Base size in pixels, scaled by perspective
-            const baseSize = 50; // Base reference size for sprites
+            const baseSize = 6; // Base reference size for sprites
             const perspectiveSize = baseSize * sprite.scale;
 
             const drawWidth = perspectiveSize * worldScaleX;
