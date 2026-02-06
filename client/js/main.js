@@ -4,8 +4,7 @@ import { AssetLoader } from './AssetLoader.js';
 import { InputHandler } from './InputHandler.js';
 import { Vehicle } from './Vehicle.js';
 import { Camera } from './Camera.js';
-import { Mode7Renderer } from './Mode7Renderer.js';
-import { SpriteRenderer } from './SpriteRenderer.js';
+import { ThreeRenderer } from './ThreeRenderer.js';
 import { Track } from './Track.js';
 import { UI } from './UI.js';
 import { DebugPanel } from './DebugPanel.js';
@@ -14,7 +13,6 @@ import { NetworkManager } from './NetworkManager.js';
 class Game {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
-        this.ctx = this.canvas.getContext('2d');
 
         // Set canvas resolution (lower for performance, CSS scales it up)
         this.canvas.width = 640;
@@ -38,8 +36,7 @@ class Game {
         this.input = null;
         this.vehicle = null;
         this.camera = null;
-        this.mode7 = null;
-        this.sprites = null;
+        this.threeRenderer = null;
         this.track = null;
         this.ui = null;
         this.debugPanel = null;
@@ -75,11 +72,9 @@ class Game {
         this.camera = new Camera();
         this.camera.follow(this.vehicle, true); // Instant snap to start
 
-        // Renderers
-        this.mode7 = new Mode7Renderer(this.canvas, loader);
-        this.mode7.buildGroundTexture(this.track);
-
-        this.sprites = new SpriteRenderer(this.canvas, loader);
+        // Three.js renderer
+        this.threeRenderer = new ThreeRenderer(this.canvas);
+        await this.threeRenderer.buildScene(this.track);
 
         // UI
         this.ui = new UI();
@@ -345,7 +340,7 @@ class Game {
         this.lastTime = currentTime;
 
         this.update(dt);
-        this.render();
+        this.render(dt);
 
         this.frameCount++;
         requestAnimationFrame(() => this.gameLoop());
@@ -394,24 +389,21 @@ class Game {
         // Update camera to follow vehicle
         this.camera.follow(this.vehicle);
 
+        // Trigger collision effects for hard hits
+        if (this.vehicle.lastCollisionForce > 30) {
+            this.threeRenderer.triggerCollisionEffect(this.vehicle.x, this.vehicle.y);
+            this.vehicle.lastCollisionForce = 0;
+        }
+
         // Update UI
         const networkRole = this.mode !== 'local' ? this.input.networkRole : null;
         this.ui.update(this.vehicle, this.input.rolesSwapped, networkRole);
     }
 
-    render() {
-        // Clear canvas
-        this.ctx.fillStyle = '#000';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Render Mode 7 ground plane
-        this.mode7.render(this.camera);
-
-        // Render trackside sprites
-        this.sprites.renderSprites(this.track.obstacles, this.camera);
-
-        // Render player's golf cart (always on top)
-        this.sprites.renderVehicle(this.vehicle);
+    render(dt) {
+        // Update and render Three.js scene
+        this.threeRenderer.update(this.vehicle, this.camera, dt);
+        this.threeRenderer.render();
     }
 }
 

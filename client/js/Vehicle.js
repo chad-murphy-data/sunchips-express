@@ -19,10 +19,10 @@ export class Vehicle {
         // Physics constants - SUPERCAR speed, golf cart handling
         this.MAX_SPEED = 500;           // Max forward speed - terrifyingly fast
         this.MAX_REVERSE_SPEED = 60;    // Reverse is punishment (was 80)
-        this.ACCELERATION = 280;         // Rockets off the line (was 150)
+        this.ACCELERATION = 180;         // Slower acceleration for better control (was 280)
         this.REVERSE_ACCEL = 40;         // Reversing is painfully slow (was 60)
         this.BRAKE_FORCE = 250;          // Slightly better brakes - they'll need them
-        this.FRICTION = 25;              // Less friction = holds speed on straights
+        this.FRICTION = 20;              // Slightly less friction for gradual slowdown
 
         // Steering constants - heavy, sluggish feel for co-op frustration
         this.TURN_RATE = 1.0;            // Base turn rate (radians/sec) - was 1.6
@@ -39,6 +39,9 @@ export class Vehicle {
 
         // Visual state for sprite selection
         this.steerState = 0;  // -1 left, 0 straight, 1 right
+
+        // Collision tracking for visual effects
+        this.lastCollisionForce = 0;
     }
 
     // Get collision check points (front corners and center)
@@ -223,6 +226,9 @@ export class Vehicle {
                 const vy = Math.sin(this.heading) * this.speed;
                 const normalDot = vx * wallCollision.normalX + vy * wallCollision.normalY;
 
+                // Track collision force for visual effects
+                this.lastCollisionForce = Math.abs(this.speed);
+
                 // Always bounce if we're in the wall, regardless of approach angle
                 // Use total speed for bounce calculation, not just into-wall component
                 // This prevents glancing blows from being ignored
@@ -248,15 +254,7 @@ export class Vehicle {
                 this.y = newY + wallCollision.normalY * 40;
 
             } else {
-                // Check for grass (slowdown) at center position
-                const centerCollision = track.checkCollision(newX, newY);
-
-                if (centerCollision.type === 'grass') {
-                    // Soft collision - slow down on grass
-                    this.speed *= 0.98;
-                }
-
-                // Move to new position
+                // Move to new position (no grass slowdown - it's all office floor)
                 this.x = newX;
                 this.y = newY;
             }

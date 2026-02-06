@@ -51,18 +51,22 @@ export class Track {
         const ts = this.tileSize;
 
         // Fill the road - horizontal sections (top and bottom)
-        for (let x = left; x <= right; x++) {
+        // Top road: tiles top, top+1, top+2 (going down)
+        // Bottom road: tiles bottom, bottom+1, bottom+2 (going down)
+        for (let x = left; x <= right + w; x++) {
             for (let i = 0; i < w; i++) {
                 this.setTile(x, top + i, 2);      // Top horizontal
-                this.setTile(x, bottom - i, 2);  // Bottom horizontal
+                this.setTile(x, bottom + i, 2);  // Bottom horizontal
             }
         }
 
         // Fill the road - vertical sections (left and right)
-        for (let y = top; y <= bottom; y++) {
+        // Left road: tiles left, left+1, left+2 (going right)
+        // Right road: tiles right, right+1, right+2 (going right)
+        for (let y = top; y <= bottom + w; y++) {
             for (let i = 0; i < w; i++) {
                 this.setTile(left + i, y, 1);     // Left vertical
-                this.setTile(right - i, y, 1);   // Right vertical
+                this.setTile(right + i, y, 1);   // Right vertical
             }
         }
 
@@ -212,7 +216,7 @@ export class Track {
         }
 
         // ===== FAR DECORATION (office furniture in the distance) =====
-        const farTypes = ['desk_with_monitor', 'whiteboard', 'vending_machine', 'conference_table', 'caution_sign'];
+        const farTypes = ['desk_with_monitor', 'whiteboard', 'vending_machine', 'conference_table', 'caution_sign', 'arcade_machine'];
 
         for (let i = 0; i < 25; i++) {
             const tx = Math.random() * this.width;
@@ -227,6 +231,7 @@ export class Track {
                 if (type === 'vending_machine') scale = 4;
                 if (type === 'conference_table') scale = 3.5;
                 if (type === 'caution_sign') scale = 2.5;
+                if (type === 'arcade_machine') scale = 3.5;
 
                 this.obstacles.push({
                     x: tx * ts,
@@ -234,6 +239,23 @@ export class Track {
                     type: type,
                     scaleX: scale,
                     scaleY: scale
+                });
+            }
+        }
+
+        // ===== CENTER ISLAND (inside the track loop - visible office space) =====
+        const centerTypes = ['desk_with_monitor', 'office_chair', 'potted_ficus', 'printer', 'water_cooler', 'conference_table'];
+        const centerSpacing = 200;
+
+        // Fill the center island with office furniture
+        for (let x = innerLeftEdge + 100; x < innerRightEdge - 100; x += centerSpacing) {
+            for (let y = innerTopEdge + 100; y < innerBottomEdge - 100; y += centerSpacing) {
+                const type = centerTypes[Math.floor(Math.random() * centerTypes.length)];
+                this.obstacles.push({
+                    x: x + (Math.random() - 0.5) * 80,
+                    y: y + (Math.random() - 0.5) * 80,
+                    type: type,
+                    scaleX: 1.5, scaleY: 1.5
                 });
             }
         }
@@ -366,8 +388,11 @@ export class Track {
     // Get start position
     getStartPosition() {
         // Start on the bottom straightaway, facing left (west) to go counter-clockwise
-        const startX = (this.roadRight - 1) * this.tileSize;
-        const startY = (this.roadBottom + 1.5) * this.tileSize;
+        // Bottom road spans from tile bottom to (bottom + roadWidth - 1)
+        // So tiles 22, 23, 24 for bottom=22, width=3
+        // Center of road is at tile (bottom + roadWidth/2) = 23.5
+        const startX = (this.roadRight) * this.tileSize; // Middle of right side
+        const startY = (this.roadBottom + this.roadWidth / 2) * this.tileSize; // Center of bottom road
         const startHeading = Math.PI;  // Facing left (west)
 
         return { x: startX, y: startY, heading: startHeading };
