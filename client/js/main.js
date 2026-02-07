@@ -437,30 +437,36 @@ class Game {
     checkStationProximity() {
         if (!this.track.snackStations) return;
 
-        for (const station of this.track.snackStations) {
-            if (station.delivered) continue;
+        if (this.gameState === 'driving') {
+            // Look for a station to approach
+            for (const station of this.track.snackStations) {
+                if (station.delivered) continue;
 
-            const dist = this.distToStation(station);
-            const speed = Math.abs(this.vehicle.speed);
+                const dist = this.distToStation(station);
+                const speed = Math.abs(this.vehicle.speed);
 
-            if (this.gameState === 'driving') {
                 if (dist < station.radius && speed < 15) {
                     this.gameState = 'approaching';
                     this.currentStation = station;
                     this.deliveryPrompt.classList.remove('hidden');
+                    break;
                 }
-            } else if (this.gameState === 'approaching') {
-                if (dist > station.radius || speed > 30) {
-                    // Drove away
-                    this.gameState = 'driving';
-                    this.currentStation = null;
-                    this.deliveryPrompt.classList.add('hidden');
-                } else {
-                    // Check if a mash key was pressed to start delivery
-                    const mashes = this.input.consumeMashes();
-                    if (mashes.player1 > 0 || mashes.player2 > 0) {
-                        this.enterDelivering();
-                    }
+            }
+        } else if (this.gameState === 'approaching' && this.currentStation) {
+            // Only check against the current station
+            const dist = this.distToStation(this.currentStation);
+            const speed = Math.abs(this.vehicle.speed);
+
+            if (dist > this.currentStation.radius || speed > 30) {
+                // Drove away
+                this.gameState = 'driving';
+                this.currentStation = null;
+                this.deliveryPrompt.classList.add('hidden');
+            } else {
+                // Check if a mash key was pressed to start delivery
+                const mashes = this.input.consumeMashes();
+                if (mashes.player1 > 0 || mashes.player2 > 0) {
+                    this.enterDelivering();
                 }
             }
         }

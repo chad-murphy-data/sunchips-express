@@ -578,7 +578,7 @@ export class ThreeRenderer {
 
         // Floor tape lines (yellow center lines on carpet)
         const tapeMat = new THREE.MeshStandardMaterial({
-            color: 0xFFD700,
+            color: 0x888888,
             roughness: 0.5
         });
 
