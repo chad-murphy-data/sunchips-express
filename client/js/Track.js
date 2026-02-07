@@ -1,293 +1,82 @@
 // Track.js - Track/map data and collision detection
+// "Floor 3" — irregular office floor plan with varying corridor widths
 
 export class Track {
     constructor() {
         // Map dimensions in tiles
-        this.width = 32;
-        this.height = 32;
+        this.width = 40;
+        this.height = 28;
 
         // Tile size in world units
         this.tileSize = 128;
 
-        // Tile map (0 = grass, 1+ = road variants)
+        // Tile constants
+        this.TILE_OFFROAD = 0;
+        this.TILE_ROAD = 1;
+
+        // Tile map (0 = offroad, 1 = road)
         this.tiles = [];
 
         // Trackside obstacles (barriers + decorative)
         this.obstacles = [];
 
-        // Track boundaries - defines the racing surface
-        this.roadLeft = 10;
-        this.roadRight = 22;
-        this.roadTop = 10;
-        this.roadBottom = 22;
-        this.roadWidth = 3; // tiles wide
+        // Road region definitions (tile coordinates, inclusive)
+        this.roadRegions = [
+            { x1: 1, y1: 22, x2: 38, y2: 25, name: 'Grand Hallway' },
+            { x1: 16, y1: 12, x2: 19, y2: 25, name: 'Left Vertical Connector' },
+            { x1: 1, y1: 12, x2: 17, y2: 13, name: 'West Corridor' },
+            { x1: 1, y1: 2, x2: 2, y2: 13, name: 'Left Vertical North' },
+            { x1: 1, y1: 2, x2: 25, y2: 3, name: 'Executive Skyway' },
+            { x1: 24, y1: 2, x2: 25, y2: 7, name: 'East Turn Down' },
+            { x1: 24, y1: 6, x2: 37, y2: 7, name: 'East Wing' },
+            { x1: 35, y1: 6, x2: 38, y2: 19, name: 'Right Vertical Descent' },
+            { x1: 16, y1: 18, x2: 38, y2: 19, name: 'Bottom-Right Corridor' },
+        ];
 
-        // Guardrail collision width (in world units)
+        // Bounding box for ThreeRenderer ceiling/light compat
+        this.roadLeft = 1;
+        this.roadRight = 38;
+        this.roadTop = 2;
+        this.roadBottom = 25;
+        this.roadWidth = 0;
+
+        // Guardrail collision width (in world units) — sub-tile edge detection threshold
         this.guardrailWidth = 50;
 
-        // Tile type to asset mapping
-        this.tileAssets = {
-            1: 'road_straight_v',    // Vertical road
-            2: 'road_straight_h',    // Horizontal road
-            3: 'road_curve_ne',      // Curve NE
-            4: 'road_curve_nw',      // Curve NW
-            5: 'road_curve_se',      // Curve SE
-            6: 'road_curve_sw',      // Curve SW
-            7: 'road_marked_v',      // Vertical with markings
-            8: 'road_marked_h',      // Horizontal with markings
-        };
+        // Precomputed wall normals for collision detection
+        this.wallNormals = null;
     }
 
-    // Generate a simple oval track for Level 1 - OFFICE INTERIOR THEME
+    // Generate the "Floor 3" track layout
     generateLevel1() {
-        // Initialize with grass (linoleum floor)
-        this.tiles = new Array(this.width * this.height).fill(0);
+        // Initialize all tiles as offroad
+        this.tiles = new Array(this.width * this.height).fill(this.TILE_OFFROAD);
 
-        const left = this.roadLeft;
-        const right = this.roadRight;
-        const top = this.roadTop;
-        const bottom = this.roadBottom;
-        const w = this.roadWidth;
+        // Fill road tiles from regions
+        for (const region of this.roadRegions) {
+            for (let y = region.y1; y <= region.y2; y++) {
+                for (let x = region.x1; x <= region.x2; x++) {
+                    this.setTile(x, y, this.TILE_ROAD);
+                }
+            }
+        }
+
+        // Precompute wall normals for fast collision detection
+        this._precomputeWallNormals();
+
+        // Verify track connectivity
+        this._verifyConnectivity();
+
         const ts = this.tileSize;
 
-        // Fill the road - horizontal sections (top and bottom)
-        // Top road: tiles top, top+1, top+2 (going down)
-        // Bottom road: tiles bottom, bottom+1, bottom+2 (going down)
-        for (let x = left; x <= right + w; x++) {
-            for (let i = 0; i < w; i++) {
-                this.setTile(x, top + i, 2);      // Top horizontal
-                this.setTile(x, bottom + i, 2);  // Bottom horizontal
-            }
-        }
+        // 3 snack stations for 3 role swaps per lap
+        this.snackStations = [
+            { x: 8 * ts, y: 12.5 * ts, radius: 150, delivered: false, id: 1 },
+            { x: 12 * ts, y: 2.5 * ts, radius: 150, delivered: false, id: 2 },
+            { x: 36.5 * ts, y: 14 * ts, radius: 150, delivered: false, id: 3 },
+        ];
 
-        // Fill the road - vertical sections (left and right)
-        // Left road: tiles left, left+1, left+2 (going right)
-        // Right road: tiles right, right+1, right+2 (going right)
-        for (let y = top; y <= bottom + w; y++) {
-            for (let i = 0; i < w; i++) {
-                this.setTile(left + i, y, 1);     // Left vertical
-                this.setTile(right + i, y, 1);   // Right vertical
-            }
-        }
-
-        // Initialize obstacles array
-        this.obstacles = [];
-
-        // === Authoritative edge positions (world units) ===
-        const outerTop = top * ts;
-        const outerBottom = (bottom + w) * ts;
-        const outerLeft = left * ts;
-        const outerRight = (right + w) * ts;
-
-        const innerTopEdge = (top + w) * ts;
-        const innerBottomEdge = bottom * ts;
-        const innerLeftEdge = (left + w) * ts;
-        const innerRightEdge = right * ts;
-
-        // Barrier spacing in world units
-        const barrierSpacing = 120;
-
-        // ===== OUTER BARRIERS (cubicle walls and filing cabinets) =====
-        const outerTypes = ['cubicle_wall', 'cubicle_wall_tall', 'filing_cabinet'];
-
-        // Outer top edge
-        for (let x = outerLeft; x <= outerRight; x += barrierSpacing) {
-            const typeIndex = Math.floor(x / barrierSpacing) % outerTypes.length;
-            this.obstacles.push({
-                x: x, y: outerTop,
-                type: outerTypes[typeIndex],
-                scaleX: 1.2, scaleY: 1.2
-            });
-        }
-
-        // Outer bottom edge
-        for (let x = outerLeft; x <= outerRight; x += barrierSpacing) {
-            const typeIndex = Math.floor(x / barrierSpacing) % outerTypes.length;
-            this.obstacles.push({
-                x: x, y: outerBottom,
-                type: outerTypes[typeIndex],
-                scaleX: 1.2, scaleY: 1.2
-            });
-        }
-
-        // Outer left edge
-        for (let y = outerTop; y <= outerBottom; y += barrierSpacing) {
-            const typeIndex = Math.floor(y / barrierSpacing) % outerTypes.length;
-            this.obstacles.push({
-                x: outerLeft, y: y,
-                type: outerTypes[typeIndex],
-                scaleX: 1.2, scaleY: 1.2
-            });
-        }
-
-        // Outer right edge
-        for (let y = outerTop; y <= outerBottom; y += barrierSpacing) {
-            const typeIndex = Math.floor(y / barrierSpacing) % outerTypes.length;
-            this.obstacles.push({
-                x: outerRight, y: y,
-                type: outerTypes[typeIndex],
-                scaleX: 1.2, scaleY: 1.2
-            });
-        }
-
-        // ===== INNER BARRIERS (filing cabinets - center of office) =====
-        const innerTypes = ['filing_cabinet', 'filing_cabinet_short'];
-        const innerSpacing = 140;
-
-        // Inner top edge
-        for (let x = innerLeftEdge; x <= innerRightEdge; x += innerSpacing) {
-            const typeIndex = Math.floor(x / innerSpacing) % innerTypes.length;
-            this.obstacles.push({
-                x: x, y: innerTopEdge,
-                type: innerTypes[typeIndex],
-                scaleX: 1.0, scaleY: 1.0
-            });
-        }
-
-        // Inner bottom edge
-        for (let x = innerLeftEdge; x <= innerRightEdge; x += innerSpacing) {
-            const typeIndex = Math.floor(x / innerSpacing) % innerTypes.length;
-            this.obstacles.push({
-                x: x, y: innerBottomEdge,
-                type: innerTypes[typeIndex],
-                scaleX: 1.0, scaleY: 1.0
-            });
-        }
-
-        // Inner left edge
-        for (let y = innerTopEdge; y <= innerBottomEdge; y += innerSpacing) {
-            const typeIndex = Math.floor(y / innerSpacing) % innerTypes.length;
-            this.obstacles.push({
-                x: innerLeftEdge, y: y,
-                type: innerTypes[typeIndex],
-                scaleX: 1.0, scaleY: 1.0
-            });
-        }
-
-        // Inner right edge
-        for (let y = innerTopEdge; y <= innerBottomEdge; y += innerSpacing) {
-            const typeIndex = Math.floor(y / innerSpacing) % innerTypes.length;
-            this.obstacles.push({
-                x: innerRightEdge, y: y,
-                type: innerTypes[typeIndex],
-                scaleX: 1.0, scaleY: 1.0
-            });
-        }
-
-        // ===== NEAR-TRACK DECORATION (scattered between barriers) =====
-        const nearTrackTypes = ['office_chair', 'water_cooler', 'printer', 'recycling_bin', 'potted_ficus'];
-        const nearSpacing = 350;
-        const nearOffset = 60; // Push slightly away from track
-
-        // Scattered along outer edges (offset outward)
-        for (let x = outerLeft + 100; x <= outerRight - 100; x += nearSpacing) {
-            // Top side (above track)
-            this.obstacles.push({
-                x: x + (Math.random() - 0.5) * 80,
-                y: outerTop - nearOffset - Math.random() * 40,
-                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
-                scaleX: 1.3, scaleY: 1.3
-            });
-            // Bottom side (below track)
-            this.obstacles.push({
-                x: x + (Math.random() - 0.5) * 80,
-                y: outerBottom + nearOffset + Math.random() * 40,
-                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
-                scaleX: 1.3, scaleY: 1.3
-            });
-        }
-
-        // Scattered along outer left/right
-        for (let y = outerTop + 100; y <= outerBottom - 100; y += nearSpacing) {
-            // Left side
-            this.obstacles.push({
-                x: outerLeft - nearOffset - Math.random() * 40,
-                y: y + (Math.random() - 0.5) * 80,
-                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
-                scaleX: 1.3, scaleY: 1.3
-            });
-            // Right side
-            this.obstacles.push({
-                x: outerRight + nearOffset + Math.random() * 40,
-                y: y + (Math.random() - 0.5) * 80,
-                type: nearTrackTypes[Math.floor(Math.random() * nearTrackTypes.length)],
-                scaleX: 1.3, scaleY: 1.3
-            });
-        }
-
-        // ===== FAR DECORATION (office furniture in the distance) =====
-        const farTypes = ['desk_with_monitor', 'whiteboard', 'vending_machine', 'conference_table', 'caution_sign', 'arcade_machine'];
-
-        for (let i = 0; i < 25; i++) {
-            const tx = Math.random() * this.width;
-            const ty = Math.random() * this.height;
-
-            // Only place far from the track
-            if (tx < left - 3 || tx > right + w + 3 ||
-                ty < top - 3 || ty > bottom + w + 3) {
-                const type = farTypes[Math.floor(Math.random() * farTypes.length)];
-                // Scale based on object type
-                let scale = 3;
-                if (type === 'vending_machine') scale = 4;
-                if (type === 'conference_table') scale = 3.5;
-                if (type === 'caution_sign') scale = 2.5;
-                if (type === 'arcade_machine') scale = 3.5;
-
-                this.obstacles.push({
-                    x: tx * ts,
-                    y: ty * ts,
-                    type: type,
-                    scaleX: scale,
-                    scaleY: scale
-                });
-            }
-        }
-
-        // ===== CENTER ISLAND (inside the track loop - visible office space) =====
-        const centerTypes = ['desk_with_monitor', 'office_chair', 'potted_ficus', 'printer', 'water_cooler', 'conference_table'];
-        const centerSpacing = 200;
-
-        // Fill the center island with office furniture
-        for (let x = innerLeftEdge + 100; x < innerRightEdge - 100; x += centerSpacing) {
-            for (let y = innerTopEdge + 100; y < innerBottomEdge - 100; y += centerSpacing) {
-                const type = centerTypes[Math.floor(Math.random() * centerTypes.length)];
-                this.obstacles.push({
-                    x: x + (Math.random() - 0.5) * 80,
-                    y: y + (Math.random() - 0.5) * 80,
-                    type: type,
-                    scaleX: 1.5, scaleY: 1.5
-                });
-            }
-        }
-
-        // Add some scattered caution signs near the track (fun office chaos)
-        for (let i = 0; i < 6; i++) {
-            const angle = (i / 6) * Math.PI * 2;
-            const radius = 200 + Math.random() * 100;
-            const cx = (left + right + w) / 2 * ts;
-            const cy = (top + bottom + w) / 2 * ts;
-
-            // Place in the center area (inside the track)
-            this.obstacles.push({
-                x: cx + Math.cos(angle) * radius * 2,
-                y: cy + Math.sin(angle) * radius * 2,
-                type: 'caution_sign',
-                scaleX: 2,
-                scaleY: 2
-            });
-        }
-
-        // Snack station on the far side of track from spawn
-        // Spawn is at bottom-right heading west; station goes on top straightaway
-        this.snackStations = [{
-            x: (left + 4) * ts,
-            y: (top + w / 2) * ts,
-            radius: 150,
-            delivered: false,
-            id: 1
-        }];
-
-        // Start/finish zone — same area as spawn
+        // Start/finish zone
         const startPos = this.getStartPosition();
         this.startFinishZone = {
             x: startPos.x,
@@ -295,68 +84,238 @@ export class Track {
             radius: 200
         };
 
+        // Generate decorative obstacles
+        this._generateObstacles();
+
         return this;
     }
 
-    // Check if a world position is on a guardrail - returns wall normal for collision response
-    // Asymmetric collision zone: 70% extends into road, 30% extends outward
-    isOnGuardrail(worldX, worldY) {
-        const tileX = worldX / this.tileSize;
-        const tileY = worldY / this.tileSize;
+    // Precompute wall normals for every offroad tile adjacent to road
+    _precomputeWallNormals() {
+        const size = this.width * this.height;
+        this.wallNormals = new Array(size).fill(null);
 
-        const left = this.roadLeft;
-        const right = this.roadRight;
-        const top = this.roadTop;
-        const bottom = this.roadBottom;
-        const w = this.roadWidth;
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (this.getTile(x, y) !== this.TILE_OFFROAD) continue;
 
-        // Asymmetric collision zone in tiles
-        const fullWidth = this.guardrailWidth / this.tileSize;
-        const inward = fullWidth * 0.7;   // 70% extends into road
-        const outward = fullWidth * 0.3;  // 30% extends outside
+                // Check 4 orthogonal neighbors for road
+                let nx = 0, ny = 0;
+                if (this._isRoad(x - 1, y)) nx -= 1;
+                if (this._isRoad(x + 1, y)) nx += 1;
+                if (this._isRoad(x, y - 1)) ny -= 1;
+                if (this._isRoad(x, y + 1)) ny += 1;
 
-        // Check outer guardrails — asymmetric zone biased into road
-        // Top outer (edge at tileY = top) - inward = +Y (down into road), outward = -Y
-        if (tileY >= top - outward && tileY <= top + inward && tileX >= left - outward && tileX <= right + w + outward) {
-            return { side: 'outer', normalX: 0, normalY: 1 };
+                const len = Math.sqrt(nx * nx + ny * ny);
+                if (len > 0) {
+                    this.wallNormals[y * this.width + x] = {
+                        nx: nx / len,
+                        ny: ny / len
+                    };
+                }
+            }
         }
-        // Bottom outer (edge at tileY = bottom + w) - inward = -Y (up into road), outward = +Y
-        if (tileY >= bottom + w - inward && tileY <= bottom + w + outward && tileX >= left - outward && tileX <= right + w + outward) {
-            return { side: 'outer', normalX: 0, normalY: -1 };
-        }
-        // Left outer (edge at tileX = left) - inward = +X (right into road), outward = -X
-        if (tileX >= left - outward && tileX <= left + inward && tileY >= top - outward && tileY <= bottom + w + outward) {
-            return { side: 'outer', normalX: 1, normalY: 0 };
-        }
-        // Right outer (edge at tileX = right + w) - inward = -X (left into road), outward = +X
-        if (tileX >= right + w - inward && tileX <= right + w + outward && tileY >= top - outward && tileY <= bottom + w + outward) {
-            return { side: 'outer', normalX: -1, normalY: 0 };
-        }
+    }
 
-        // Check inner guardrails
-        const innerLeft = left + w;
-        const innerRight = right;
-        const innerTop = top + w;
-        const innerBottom = bottom;
+    _isRoad(x, y) {
+        if (x < 0 || x >= this.width || y < 0 || y >= this.height) return false;
+        return this.getTile(x, y) !== this.TILE_OFFROAD;
+    }
 
-        // Inner top (edge at tileY = innerTop) - inward = -Y (up into road), outward = +Y
-        if (tileY >= innerTop - inward && tileY <= innerTop + outward && tileX >= innerLeft - outward && tileX <= innerRight + outward) {
-            return { side: 'inner', normalX: 0, normalY: -1 };
-        }
-        // Inner bottom (edge at tileY = innerBottom) - inward = +Y (down into road), outward = -Y
-        if (tileY >= innerBottom - outward && tileY <= innerBottom + inward && tileX >= innerLeft - outward && tileX <= innerRight + outward) {
-            return { side: 'inner', normalX: 0, normalY: 1 };
-        }
-        // Inner left (edge at tileX = innerLeft) - inward = -X (left into road), outward = +X
-        if (tileX >= innerLeft - inward && tileX <= innerLeft + outward && tileY >= innerTop - outward && tileY <= innerBottom + outward) {
-            return { side: 'inner', normalX: -1, normalY: 0 };
-        }
-        // Inner right (edge at tileX = innerRight) - inward = +X (right into road), outward = -X
-        if (tileX >= innerRight - outward && tileX <= innerRight + inward && tileY >= innerTop - outward && tileY <= innerBottom + outward) {
-            return { side: 'inner', normalX: 1, normalY: 0 };
+    // Verify the track forms a connected loop via flood fill
+    _verifyConnectivity() {
+        const startTileX = 20;
+        const startTileY = 23;
+
+        const visited = new Set();
+        const stack = [[startTileX, startTileY]];
+        visited.add(`${startTileX},${startTileY}`);
+
+        while (stack.length > 0) {
+            const [x, y] = stack.pop();
+            const neighbors = [[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+            for (const [nx, ny] of neighbors) {
+                const key = `${nx},${ny}`;
+                if (!visited.has(key) && this._isRoad(nx, ny)) {
+                    visited.add(key);
+                    stack.push([nx, ny]);
+                }
+            }
         }
 
-        return null;
+        // Count total road tiles
+        let totalRoad = 0;
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (this.getTile(x, y) !== this.TILE_OFFROAD) totalRoad++;
+            }
+        }
+
+        if (visited.size !== totalRoad) {
+            console.warn(`Track connectivity issue: ${visited.size} reachable of ${totalRoad} road tiles`);
+        } else {
+            console.log(`Track verified: ${totalRoad} connected road tiles`);
+        }
+    }
+
+    // Generate decorative obstacles in offroad areas
+    _generateObstacles() {
+        this.obstacles = [];
+        const ts = this.tileSize;
+
+        // Seeded pseudo-random for determinism
+        const seededRandom = (x, y, salt) => {
+            const n = Math.sin(x * 127.1 + y * 311.7 + salt * 73.3) * 43758.5453;
+            return n - Math.floor(n);
+        };
+
+        const nearTypes = ['office_chair', 'water_cooler', 'printer', 'recycling_bin', 'potted_ficus'];
+        const interiorTypes = ['desk_with_monitor', 'office_chair', 'conference_table',
+            'potted_ficus', 'whiteboard', 'printer', 'arcade_machine'];
+
+        // Near-track furniture: offroad tiles adjacent to road
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (this.getTile(x, y) !== this.TILE_OFFROAD) continue;
+
+                const adjRoad = this._isRoad(x-1, y) || this._isRoad(x+1, y) ||
+                    this._isRoad(x, y-1) || this._isRoad(x, y+1);
+                if (!adjRoad) continue;
+
+                if (seededRandom(x, y, 1) < 0.15) {
+                    const typeIdx = Math.floor(seededRandom(x, y, 2) * nearTypes.length);
+                    this.obstacles.push({
+                        x: (x + 0.5) * ts,
+                        y: (y + 0.5) * ts,
+                        type: nearTypes[typeIdx],
+                        scaleX: 1.3, scaleY: 1.3
+                    });
+                }
+            }
+        }
+
+        // Interior office spaces: fill large offroad areas with furniture
+        for (let y = 2; y < this.height - 2; y += 3) {
+            for (let x = 2; x < this.width - 2; x += 3) {
+                if (this.getTile(x, y) !== this.TILE_OFFROAD) continue;
+
+                const adjRoad = this._isRoad(x-1, y) || this._isRoad(x+1, y) ||
+                    this._isRoad(x, y-1) || this._isRoad(x, y+1);
+                if (adjRoad) continue;
+
+                const typeIdx = Math.floor(seededRandom(x, y, 3) * interiorTypes.length);
+                this.obstacles.push({
+                    x: (x + seededRandom(x, y, 4)) * ts,
+                    y: (y + seededRandom(x, y, 5)) * ts,
+                    type: interiorTypes[typeIdx],
+                    scaleX: 1.5 + seededRandom(x, y, 6) * 0.5,
+                    scaleY: 1.5 + seededRandom(x, y, 6) * 0.5
+                });
+            }
+        }
+
+        // Caution signs at specific locations
+        const signPositions = [
+            [5, 11], [14, 3], [30, 7], [37, 16], [10, 24], [25, 24], [18, 14], [33, 19]
+        ];
+        for (const [sx, sy] of signPositions) {
+            this.obstacles.push({
+                x: (sx + 0.5) * ts,
+                y: (sy + 0.5) * ts,
+                type: 'caution_sign',
+                scaleX: 2, scaleY: 2
+            });
+        }
+    }
+
+    // Scan tile map and return wall edge segments for the renderer.
+    // Returns merged colinear edge runs in world units.
+    getWallEdges() {
+        const ts = this.tileSize;
+        const edges = [];
+
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                if (this.getTile(x, y) === this.TILE_OFFROAD) continue;
+
+                // Road tile — check 4 neighbors for offroad/out-of-bounds
+                if (!this._isRoad(x, y - 1)) {
+                    edges.push({
+                        x1: x * ts, y1: y * ts,
+                        x2: (x + 1) * ts, y2: y * ts,
+                        normalX: 0, normalY: -1,
+                        orientation: 'h', fixedCoord: y * ts
+                    });
+                }
+                if (!this._isRoad(x, y + 1)) {
+                    edges.push({
+                        x1: x * ts, y1: (y + 1) * ts,
+                        x2: (x + 1) * ts, y2: (y + 1) * ts,
+                        normalX: 0, normalY: 1,
+                        orientation: 'h', fixedCoord: (y + 1) * ts
+                    });
+                }
+                if (!this._isRoad(x - 1, y)) {
+                    edges.push({
+                        x1: x * ts, y1: y * ts,
+                        x2: x * ts, y2: (y + 1) * ts,
+                        normalX: -1, normalY: 0,
+                        orientation: 'v', fixedCoord: x * ts
+                    });
+                }
+                if (!this._isRoad(x + 1, y)) {
+                    edges.push({
+                        x1: (x + 1) * ts, y1: y * ts,
+                        x2: (x + 1) * ts, y2: (y + 1) * ts,
+                        normalX: 1, normalY: 0,
+                        orientation: 'v', fixedCoord: (x + 1) * ts
+                    });
+                }
+            }
+        }
+
+        return this._mergeEdges(edges);
+    }
+
+    _mergeEdges(edges) {
+        const groups = {};
+
+        for (const e of edges) {
+            const key = `${e.orientation}_${e.fixedCoord}_${e.normalX}_${e.normalY}`;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(e);
+        }
+
+        const runs = [];
+
+        for (const segs of Object.values(groups)) {
+            const isHoriz = segs[0].orientation === 'h';
+
+            if (isHoriz) {
+                segs.sort((a, b) => a.x1 - b.x1);
+            } else {
+                segs.sort((a, b) => a.y1 - b.y1);
+            }
+
+            let current = { ...segs[0] };
+            for (let i = 1; i < segs.length; i++) {
+                const next = segs[i];
+                if (isHoriz && next.x1 === current.x2) {
+                    current.x2 = next.x2;
+                } else if (!isHoriz && next.y1 === current.y2) {
+                    current.y2 = next.y2;
+                } else {
+                    runs.push({ x1: current.x1, y1: current.y1, x2: current.x2, y2: current.y2,
+                        normalX: current.normalX, normalY: current.normalY });
+                    current = { ...next };
+                }
+            }
+            runs.push({ x1: current.x1, y1: current.y1, x2: current.x2, y2: current.y2,
+                normalX: current.normalX, normalY: current.normalY });
+        }
+
+        console.log(`Track wall edges: ${edges.length} raw -> ${runs.length} merged runs`);
+        return runs;
     }
 
     setTile(x, y, value) {
@@ -369,11 +328,7 @@ export class Track {
         if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
             return this.tiles[y * this.width + x];
         }
-        return 0; // Grass outside bounds
-    }
-
-    getTileAsset(tileValue) {
-        return this.tileAssets[tileValue] || 'grass01';
+        return this.TILE_OFFROAD;
     }
 
     // Check collision at world position
@@ -381,38 +336,80 @@ export class Track {
         const tileX = Math.floor(worldX / this.tileSize);
         const tileY = Math.floor(worldY / this.tileSize);
 
-        const tile = this.getTile(tileX, tileY);
-
-        // Check if on guardrail (wall collision) - now returns normal
-        const guardrail = this.isOnGuardrail(worldX, worldY);
-        if (guardrail) {
-            return {
-                type: 'wall',
-                normalX: guardrail.normalX,
-                normalY: guardrail.normalY,
-                side: guardrail.side
-            };
+        // Out of bounds = wall
+        if (tileX < 0 || tileX >= this.width || tileY < 0 || tileY >= this.height) {
+            let nx = 0, ny = 0;
+            if (tileX < 0) nx = 1;
+            else if (tileX >= this.width) nx = -1;
+            if (tileY < 0) ny = 1;
+            else if (tileY >= this.height) ny = -1;
+            const len = Math.sqrt(nx * nx + ny * ny) || 1;
+            return { type: 'wall', normalX: nx / len, normalY: ny / len, side: 'boundary' };
         }
 
-        if (tile === 0) {
-            // On grass - slow down
+        const tile = this.getTile(tileX, tileY);
+
+        // Offroad tile = wall
+        if (tile === this.TILE_OFFROAD) {
+            const idx = tileY * this.width + tileX;
+            const wallNormal = this.wallNormals ? this.wallNormals[idx] : null;
+
+            if (wallNormal) {
+                return { type: 'wall', normalX: wallNormal.nx, normalY: wallNormal.ny, side: 'wall' };
+            }
+
+            // Deep offroad — scan for nearest road tile
+            let bestNx = 0, bestNy = 0, bestDist = Infinity;
+            for (let dy = -5; dy <= 5; dy++) {
+                for (let dx = -5; dx <= 5; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    if (this._isRoad(tileX + dx, tileY + dy)) {
+                        const dist = dx * dx + dy * dy;
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestNx = dx;
+                            bestNy = dy;
+                        }
+                    }
+                }
+            }
+
+            if (bestDist < Infinity) {
+                const len = Math.sqrt(bestNx * bestNx + bestNy * bestNy);
+                return { type: 'wall', normalX: bestNx / len, normalY: bestNy / len, side: 'wall' };
+            }
+
             return { type: 'grass', friction: 0.95 };
         }
 
-        // On road
+        // Road tile — check sub-tile proximity to offroad edges (guardrail zone)
+        const fracX = (worldX / this.tileSize) - tileX;
+        const fracY = (worldY / this.tileSize) - tileY;
+        const threshold = this.guardrailWidth / this.tileSize;
+
+        if (fracX < threshold && !this._isRoad(tileX - 1, tileY)) {
+            return { type: 'wall', normalX: 1, normalY: 0, side: 'wall' };
+        }
+        if (fracX > (1 - threshold) && !this._isRoad(tileX + 1, tileY)) {
+            return { type: 'wall', normalX: -1, normalY: 0, side: 'wall' };
+        }
+        if (fracY < threshold && !this._isRoad(tileX, tileY - 1)) {
+            return { type: 'wall', normalX: 0, normalY: 1, side: 'wall' };
+        }
+        if (fracY > (1 - threshold) && !this._isRoad(tileX, tileY + 1)) {
+            return { type: 'wall', normalX: 0, normalY: -1, side: 'wall' };
+        }
+
+        // On road, no wall nearby
         return { type: 'road', friction: 1.0 };
     }
 
-    // Get start position
+    // Get start position — middle of Grand Hallway, facing west
     getStartPosition() {
-        // Start on the bottom straightaway, facing left (west) to go counter-clockwise
-        // Bottom road spans from tile bottom to (bottom + roadWidth - 1)
-        // So tiles 22, 23, 24 for bottom=22, width=3
-        // Center of road is at tile (bottom + roadWidth/2) = 23.5
-        const startX = (this.roadRight) * this.tileSize; // Middle of right side
-        const startY = (this.roadBottom + this.roadWidth / 2) * this.tileSize; // Center of bottom road
-        const startHeading = Math.PI;  // Facing left (west)
-
-        return { x: startX, y: startY, heading: startHeading };
+        return {
+            x: 20 * this.tileSize,
+            y: 23.5 * this.tileSize,
+            heading: Math.PI
+        };
     }
 }

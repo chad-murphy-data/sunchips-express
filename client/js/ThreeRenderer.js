@@ -531,38 +531,25 @@ export class ThreeRenderer {
         linoleumTexture.wrapT = THREE.RepeatWrapping;
         linoleumTexture.repeat.set(track.width, track.height);
 
-        // Create large linoleum floor (entire map)
-        const mapSize = track.width * ts;
-        const linoleumGeo = new THREE.PlaneGeometry(mapSize, mapSize);
+        // Create large linoleum floor (entire map — now rectangular)
+        const mapWidth = track.width * ts;
+        const mapHeight = track.height * ts;
+        const linoleumGeo = new THREE.PlaneGeometry(mapWidth, mapHeight);
         const linoleumMat = new THREE.MeshStandardMaterial({
             map: linoleumTexture,
             roughness: 0.8
         });
         const linoleum = new THREE.Mesh(linoleumGeo, linoleumMat);
         linoleum.rotation.x = -Math.PI / 2;
-        linoleum.position.set(mapSize / 2, -0.1, mapSize / 2);
+        linoleum.position.set(mapWidth / 2, -0.1, mapHeight / 2);
         linoleum.receiveShadow = true;
         this.scene.add(linoleum);
-
-        // Build carpet for the road surface
-        const left = track.roadLeft;
-        const right = track.roadRight;
-        const top = track.roadTop;
-        const bottom = track.roadBottom;
-        const w = track.roadWidth;
-
-        // Road sections (rectangular carpet pieces)
-        const carpetMat = new THREE.MeshStandardMaterial({
-            map: carpetTexture,
-            roughness: 0.9
-        });
 
         // Helper to create a carpet section
         const createCarpetSection = (x1, z1, x2, z2) => {
             const width = Math.abs(x2 - x1);
             const depth = Math.abs(z2 - z1);
 
-            // Update texture repeat for this section
             const sectionTexture = carpetTexture.clone();
             sectionTexture.repeat.set(width / ts, depth / ts);
             sectionTexture.needsUpdate = true;
@@ -580,14 +567,14 @@ export class ThreeRenderer {
             this.scene.add(mesh);
         };
 
-        // Top horizontal road
-        createCarpetSection(left * ts, top * ts, (right + w) * ts, (top + w) * ts);
-        // Bottom horizontal road
-        createCarpetSection(left * ts, bottom * ts, (right + w) * ts, (bottom + w) * ts);
-        // Left vertical road
-        createCarpetSection(left * ts, (top + w) * ts, (left + w) * ts, bottom * ts);
-        // Right vertical road
-        createCarpetSection(right * ts, (top + w) * ts, (right + w) * ts, bottom * ts);
+        // Carpet sections: one per road region
+        for (const region of track.roadRegions) {
+            const x1 = region.x1 * ts;
+            const z1 = region.y1 * ts;
+            const x2 = (region.x2 + 1) * ts;
+            const z2 = (region.y2 + 1) * ts;
+            createCarpetSection(x1, z1, x2, z2);
+        }
 
         // Floor tape lines (yellow center lines on carpet)
         const tapeMat = new THREE.MeshStandardMaterial({
@@ -595,14 +582,14 @@ export class ThreeRenderer {
             roughness: 0.5
         });
 
-        const createTapeLine = (x1, z1, x2, z2, width = 4) => {
+        const createTapeLine = (x1, z1, x2, z2, tapeWidth = 4) => {
             const length = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2);
-            const geo = new THREE.PlaneGeometry(width, length);
+            if (length < 1) return;
+            const geo = new THREE.PlaneGeometry(tapeWidth, length);
             const tape = new THREE.Mesh(geo, tapeMat);
             tape.rotation.x = -Math.PI / 2;
             tape.position.set((x1 + x2) / 2, 0.05, (z1 + z2) / 2);
 
-            // Rotate to align with direction
             if (Math.abs(x2 - x1) > Math.abs(z2 - z1)) {
                 tape.rotation.z = Math.PI / 2;
             }
@@ -610,22 +597,31 @@ export class ThreeRenderer {
             this.scene.add(tape);
         };
 
-        // Center lines for each road section
-        const centerOffset = w * ts / 2;
+        // Center tape line per road region
+        for (const region of track.roadRegions) {
+            const x1 = region.x1 * ts;
+            const z1 = region.y1 * ts;
+            const x2 = (region.x2 + 1) * ts;
+            const z2 = (region.y2 + 1) * ts;
+            const cx = (x1 + x2) / 2;
+            const cz = (z1 + z2) / 2;
+            const rw = x2 - x1;
+            const rh = z2 - z1;
 
-        // Top horizontal center line
-        createTapeLine((left + 0.5) * ts, (top * ts) + centerOffset, (right + w - 0.5) * ts, (top * ts) + centerOffset);
-        // Bottom horizontal center line
-        createTapeLine((left + 0.5) * ts, (bottom * ts) + centerOffset, (right + w - 0.5) * ts, (bottom * ts) + centerOffset);
-        // Left vertical center line
-        createTapeLine((left * ts) + centerOffset, (top + w + 0.5) * ts, (left * ts) + centerOffset, (bottom - 0.5) * ts);
-        // Right vertical center line
-        createTapeLine((right * ts) + centerOffset, (top + w + 0.5) * ts, (right * ts) + centerOffset, (bottom - 0.5) * ts);
+            if (rw >= rh) {
+                // Horizontal region — horizontal center line
+                createTapeLine(x1 + ts * 0.5, cz, x2 - ts * 0.5, cz);
+            } else {
+                // Vertical region — vertical center line
+                createTapeLine(cx, z1 + ts * 0.5, cx, z2 - ts * 0.5);
+            }
+        }
     }
 
     buildCeiling(track) {
         const ts = track.tileSize;
-        const mapSize = track.width * ts;
+        const mapWidth = track.width * ts;
+        const mapHeight = track.height * ts;
 
         // Create ceiling grid texture
         const ceilingCanvas = document.createElement('canvas');
@@ -645,10 +641,10 @@ export class ThreeRenderer {
         const ceilingTexture = new THREE.CanvasTexture(ceilingCanvas);
         ceilingTexture.wrapS = THREE.RepeatWrapping;
         ceilingTexture.wrapT = THREE.RepeatWrapping;
-        ceilingTexture.repeat.set(mapSize / 200, mapSize / 200);
+        ceilingTexture.repeat.set(mapWidth / 200, mapHeight / 200);
 
-        // Ceiling plane
-        const ceilingGeo = new THREE.PlaneGeometry(mapSize, mapSize);
+        // Ceiling plane (rectangular)
+        const ceilingGeo = new THREE.PlaneGeometry(mapWidth, mapHeight);
         const ceilingMat = new THREE.MeshStandardMaterial({
             map: ceilingTexture,
             side: THREE.BackSide,
@@ -656,10 +652,10 @@ export class ThreeRenderer {
         });
         const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
         ceiling.rotation.x = Math.PI / 2;
-        ceiling.position.set(mapSize / 2, this.CEILING_HEIGHT, mapSize / 2);
+        ceiling.position.set(mapWidth / 2, this.CEILING_HEIGHT, mapHeight / 2);
         this.scene.add(ceiling);
 
-        // Fluorescent light panels
+        // Fluorescent light panels — place over each road region
         const lightPanelGeo = new THREE.PlaneGeometry(40, 12);
         const lightPanelMat = new THREE.MeshStandardMaterial({
             color: 0xFFFFFF,
@@ -668,19 +664,20 @@ export class ThreeRenderer {
             side: THREE.BackSide
         });
 
-        // Place lights in grid pattern over the track area
         const spacing = 300;
-        const startX = track.roadLeft * ts - 200;
-        const endX = (track.roadRight + track.roadWidth) * ts + 200;
-        const startZ = track.roadTop * ts - 200;
-        const endZ = (track.roadBottom + track.roadWidth) * ts + 200;
+        for (const region of track.roadRegions) {
+            const startX = region.x1 * ts;
+            const endX = (region.x2 + 1) * ts;
+            const startZ = region.y1 * ts;
+            const endZ = (region.y2 + 1) * ts;
 
-        for (let x = startX; x < endX; x += spacing) {
-            for (let z = startZ; z < endZ; z += spacing) {
-                const panel = new THREE.Mesh(lightPanelGeo, lightPanelMat);
-                panel.position.set(x, this.CEILING_HEIGHT - 0.5, z);
-                panel.rotation.x = Math.PI / 2;
-                this.scene.add(panel);
+            for (let x = startX + spacing / 2; x < endX; x += spacing) {
+                for (let z = startZ + spacing / 2; z < endZ; z += spacing) {
+                    const panel = new THREE.Mesh(lightPanelGeo, lightPanelMat);
+                    panel.position.set(x, this.CEILING_HEIGHT - 0.5, z);
+                    panel.rotation.x = Math.PI / 2;
+                    this.scene.add(panel);
+                }
             }
         }
     }
@@ -719,35 +716,38 @@ export class ThreeRenderer {
     }
 
     getWallRuns(track) {
-        const ts = track.tileSize;
         const wallOffset = -15;
-        const cornerGap = this.WALL_THICKNESS * 4;
 
-        const outerLeft = track.roadLeft * ts - wallOffset;
-        const outerRight = (track.roadRight + track.roadWidth) * ts + wallOffset;
-        const outerTop = track.roadTop * ts - wallOffset;
-        const outerBottom = (track.roadBottom + track.roadWidth) * ts + wallOffset;
+        // Get merged wall edges from the tile map
+        const edges = track.getWallEdges();
 
-        const innerLeft = (track.roadLeft + track.roadWidth) * ts + wallOffset;
-        const innerRight = track.roadRight * ts - wallOffset;
-        const innerTop = (track.roadTop + track.roadWidth) * ts + wallOffset;
-        const innerBottom = track.roadBottom * ts - wallOffset;
+        const wallRuns = [];
+        for (const edge of edges) {
+            // Determine wall rotation from normal direction
+            // Wall model faces local +Z; rotate so visible face points toward road
+            let rotY;
+            if (edge.normalY === -1) rotY = 0;            // Top edge, faces south into road
+            else if (edge.normalY === 1) rotY = Math.PI;   // Bottom edge, faces north
+            else if (edge.normalX === -1) rotY = Math.PI / 2;  // Left edge, faces right
+            else if (edge.normalX === 1) rotY = -Math.PI / 2;  // Right edge, faces left
+            else rotY = 0;
 
-        // Store computed bounds for use by other methods
-        this._wallBounds = { outerLeft, outerRight, outerTop, outerBottom, innerLeft, innerRight, innerTop, innerBottom };
+            // Apply wall offset (push wall slightly toward road)
+            const offX = -edge.normalX * wallOffset;
+            const offZ = -edge.normalY * wallOffset;
 
-        return [
-            // Outer walls - facing inward toward road
-            { start: {x: outerLeft + cornerGap, z: outerTop},   end: {x: outerRight - cornerGap, z: outerTop},   rotY: 0,            label: 'outerTop' },
-            { start: {x: outerLeft + cornerGap, z: outerBottom}, end: {x: outerRight - cornerGap, z: outerBottom}, rotY: Math.PI,      label: 'outerBottom' },
-            { start: {x: outerLeft, z: outerTop + cornerGap},   end: {x: outerLeft, z: outerBottom - cornerGap},   rotY: Math.PI / 2,  label: 'outerLeft' },
-            { start: {x: outerRight, z: outerTop + cornerGap},  end: {x: outerRight, z: outerBottom - cornerGap},  rotY: -Math.PI / 2, label: 'outerRight' },
-            // Inner walls - facing outward toward road
-            { start: {x: innerLeft + cornerGap, z: innerTop},   end: {x: innerRight - cornerGap, z: innerTop},   rotY: Math.PI,      label: 'innerTop' },
-            { start: {x: innerLeft + cornerGap, z: innerBottom}, end: {x: innerRight - cornerGap, z: innerBottom}, rotY: 0,            label: 'innerBottom' },
-            { start: {x: innerLeft, z: innerTop + cornerGap},   end: {x: innerLeft, z: innerBottom - cornerGap},   rotY: -Math.PI / 2, label: 'innerLeft' },
-            { start: {x: innerRight, z: innerTop + cornerGap},  end: {x: innerRight, z: innerBottom - cornerGap},  rotY: Math.PI / 2,  label: 'innerRight' },
-        ];
+            wallRuns.push({
+                start: { x: edge.x1 + offX, z: edge.y1 + offZ },
+                end: { x: edge.x2 + offX, z: edge.y2 + offZ },
+                rotY: rotY,
+                normalX: edge.normalX,
+                normalY: edge.normalY,
+                label: `wall_${edge.x1}_${edge.y1}`
+            });
+        }
+
+        this._wallRuns = wallRuns;
+        return wallRuns;
     }
 
     pickWallVariant(index) {
@@ -790,7 +790,6 @@ export class ThreeRenderer {
                 const runLength = Math.sqrt(dx * dx + dz * dz);
                 const cx = (run.start.x + run.end.x) / 2;
                 const cz = (run.start.z + run.end.z) / 2;
-                // Determine if wall runs along X or Z
                 const isHorizontal = Math.abs(dx) > Math.abs(dz);
                 if (isHorizontal) {
                     this.createFallbackWallSegment(cx, cz, runLength, this.WALL_THICKNESS, 0);
@@ -803,19 +802,18 @@ export class ThreeRenderer {
 
         // Scale factor: match wall model height to our WALL_HEIGHT
         const scaleFactor = this.WALL_HEIGHT / wallInfo.height;
-        // Tiling stride in world units (use the larger of width/depth as the tiling dimension)
         const tileWidth = Math.max(wallInfo.width, wallInfo.depth) * scaleFactor;
-        console.log(`Wall tiling: scaleFactor=${scaleFactor.toFixed(2)}, tileWidth=${tileWidth.toFixed(1)}`);
+        console.log(`Wall tiling: scaleFactor=${scaleFactor.toFixed(2)}, tileWidth=${tileWidth.toFixed(1)}, ${wallRuns.length} wall runs`);
 
         for (const run of wallRuns) {
             const dx = run.end.x - run.start.x;
             const dz = run.end.z - run.start.z;
             const runLength = Math.sqrt(dx * dx + dz * dz);
+            if (runLength < 1) continue;
+
             const numTiles = Math.max(1, Math.floor(runLength / tileWidth));
             const dirX = dx / runLength;
             const dirZ = dz / runLength;
-
-            // Spread tiles evenly across the run
             const actualStride = runLength / numTiles;
 
             for (let i = 0; i < numTiles; i++) {
@@ -823,7 +821,6 @@ export class ThreeRenderer {
                 const model = this.cloneModel(modelKey, this.WALL_HEIGHT);
 
                 if (!model) {
-                    // Per-tile fallback
                     const cx = run.start.x + dirX * (i * actualStride + actualStride / 2);
                     const cz = run.start.z + dirZ * (i * actualStride + actualStride / 2);
                     this.createFallbackWallSegment(cx, cz, actualStride, this.WALL_THICKNESS, run.rotY);
@@ -839,87 +836,98 @@ export class ThreeRenderer {
             }
         }
 
-        // Place corner pieces
+        // Place corner pieces at wall junctions
         this.placeCornerPieces();
     }
 
     placeCornerPieces() {
-        const b = this._wallBounds;
-        if (!b) return;
+        const runs = this._wallRuns;
+        if (!runs || runs.length === 0) return;
 
-        const corners = [
-            // Outer corners (rounded for smooth appearance)
-            { x: b.outerLeft,  z: b.outerTop,    rotY: 0,              model: 'wallCornerRond' },
-            { x: b.outerRight, z: b.outerTop,    rotY: -Math.PI / 2,  model: 'wallCornerRond' },
-            { x: b.outerLeft,  z: b.outerBottom, rotY: Math.PI / 2,   model: 'wallCornerRond' },
-            { x: b.outerRight, z: b.outerBottom, rotY: Math.PI,       model: 'wallCornerRond' },
-            // Inner corners (sharp)
-            { x: b.innerLeft,  z: b.innerTop,    rotY: Math.PI,       model: 'wallCorner' },
-            { x: b.innerRight, z: b.innerTop,    rotY: Math.PI / 2,   model: 'wallCorner' },
-            { x: b.innerLeft,  z: b.innerBottom, rotY: -Math.PI / 2,  model: 'wallCorner' },
-            { x: b.innerRight, z: b.innerBottom, rotY: 0,             model: 'wallCorner' },
-        ];
+        // Collect all run endpoints with their orientation info
+        const tolerance = 20;
+        const cornerMap = new Map();
 
-        for (const corner of corners) {
-            const piece = this.cloneModel(corner.model, this.WALL_HEIGHT);
+        for (const run of runs) {
+            for (const point of [run.start, run.end]) {
+                const key = `${Math.round(point.x / tolerance)}_${Math.round(point.z / tolerance)}`;
+                if (!cornerMap.has(key)) {
+                    cornerMap.set(key, { x: point.x, z: point.z, rotYs: new Set() });
+                }
+                cornerMap.get(key).rotYs.add(run.rotY);
+            }
+        }
+
+        // Place corners where 2+ perpendicular wall runs meet
+        for (const corner of cornerMap.values()) {
+            if (corner.rotYs.size < 2) continue;
+
+            const piece = this.cloneModel('wallCorner', this.WALL_HEIGHT);
             if (piece) {
                 piece.position.set(corner.x, 0, corner.z);
-                piece.rotation.y = corner.rotY;
+                // Use one of the meeting wall rotations
+                piece.rotation.y = corner.rotYs.values().next().value;
                 this.scene.add(piece);
             }
         }
     }
 
     buildRacingElements(track) {
-        const b = this._wallBounds;
-        if (!b) return;
+        const ts = track.tileSize;
+        const startPos = track.getStartPosition();
+
+        // Find road region containing start position to get local road width
+        let localRoadWidth = 4 * ts; // default
+        for (const region of track.roadRegions) {
+            const px = startPos.x / ts;
+            const py = startPos.y / ts;
+            if (px >= region.x1 && px <= region.x2 + 1 && py >= region.y1 && py <= region.y2 + 1) {
+                // Start heading is PI (west), so road runs east-west
+                // Road width is the north-south span of this region
+                localRoadWidth = (region.y2 - region.y1 + 1) * ts;
+                break;
+            }
+        }
 
         // === Start/Finish line — flags in a straight line across the road ===
-        const startPos = track.getStartPosition();
-        // Start is on bottom straightaway heading west (PI)
-        // Road runs east-west at z=startPos.y
-        // Outer wall at higher z, inner wall at lower z
-        // Place flags in a line perpendicular to the road (along Z axis) at startPos.x
-        const ts = track.tileSize;
-        const roadHalfWidth = (track.roadWidth * ts) / 2;
+        const roadHalfWidth = localRoadWidth / 2;
         const roadCenterZ = startPos.y;
         const numFlags = 5;
 
         for (let i = 0; i < numFlags; i++) {
-            // Evenly space flags across the road width
-            const t = (i / (numFlags - 1)) - 0.5; // -0.5 to 0.5
-            const flagZ = roadCenterZ + t * roadHalfWidth * 1.8; // spread across road
+            const t = (i / (numFlags - 1)) - 0.5;
+            const flagZ = roadCenterZ + t * roadHalfWidth * 1.8;
 
             const flag = this.cloneModel('flagCheckers', 40);
             if (flag) {
                 flag.position.set(startPos.x, 0, flagZ);
-                flag.rotation.y = Math.PI / 2; // face along the road
+                flag.rotation.y = Math.PI / 2;
                 this.scene.add(flag);
             }
         }
 
-        // === Pylons at corners ===
-        const allCorners = [
-            { x: b.outerLeft, z: b.outerTop },
-            { x: b.outerRight, z: b.outerTop },
-            { x: b.outerLeft, z: b.outerBottom },
-            { x: b.outerRight, z: b.outerBottom },
-            { x: b.innerLeft, z: b.innerTop },
-            { x: b.innerRight, z: b.innerTop },
-            { x: b.innerLeft, z: b.innerBottom },
-            { x: b.innerRight, z: b.innerBottom },
-        ];
+        // === Pylons at a subset of wall run endpoints ===
+        if (this._wallRuns) {
+            const cornerSet = new Set();
+            for (const run of this._wallRuns) {
+                cornerSet.add(`${Math.round(run.start.x)}_${Math.round(run.start.z)}`);
+                cornerSet.add(`${Math.round(run.end.x)}_${Math.round(run.end.z)}`);
+            }
 
-        for (const corner of allCorners) {
-            for (let j = 0; j < 3; j++) {
-                const pylon = this.cloneModel('pylon', 15);
-                if (pylon) {
-                    // Spread pylons in a small cluster around the corner
-                    const seed = corner.x * 7 + corner.z * 13 + j * 31;
-                    const px = ((seed % 40) - 20);
-                    const pz = (((seed * 3) % 40) - 20);
-                    pylon.position.set(corner.x + px, 0, corner.z + pz);
-                    this.scene.add(pylon);
+            let count = 0;
+            for (const posStr of cornerSet) {
+                count++;
+                if (count % 4 !== 0) continue; // Place at every 4th corner
+                const [x, z] = posStr.split('_').map(Number);
+                for (let j = 0; j < 2; j++) {
+                    const pylon = this.cloneModel('pylon', 15);
+                    if (pylon) {
+                        const seed = x * 7 + z * 13 + j * 31;
+                        const px = ((seed % 30) - 15);
+                        const pz = (((seed * 3) % 30) - 15);
+                        pylon.position.set(x + px, 0, z + pz);
+                        this.scene.add(pylon);
+                    }
                 }
             }
         }
