@@ -389,18 +389,37 @@ export class Track {
         const fracY = (worldY / this.tileSize) - tileY;
         const threshold = this.guardrailWidth / this.tileSize;
 
-        if (fracX < threshold && !this._isRoad(tileX - 1, tileY)) {
-            return { type: 'wall', normalX: 1, normalY: 0, side: 'wall' };
+        // Check which neighboring tiles are offroad
+        const wallLeft = !this._isRoad(tileX - 1, tileY);
+        const wallRight = !this._isRoad(tileX + 1, tileY);
+        const wallUp = !this._isRoad(tileX, tileY - 1);
+        const wallDown = !this._isRoad(tileX, tileY + 1);
+
+        const nearLeft = wallLeft && fracX < threshold;
+        const nearRight = wallRight && fracX > (1 - threshold);
+        const nearUp = wallUp && fracY < threshold;
+        const nearDown = wallDown && fracY > (1 - threshold);
+
+        // Corner case: near two perpendicular walls — use diagonal distance
+        // so the collision zone is rounded instead of L-shaped
+        if ((nearLeft || nearRight) && (nearUp || nearDown)) {
+            const cornerX = nearLeft ? threshold : (1 - threshold);
+            const cornerY = nearUp ? threshold : (1 - threshold);
+            const dx = fracX - cornerX;
+            const dy = fracY - cornerY;
+            if (dx * dx + dy * dy < threshold * threshold) {
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                return { type: 'wall', normalX: dx / len, normalY: dy / len, side: 'wall' };
+            }
+            // Inside the rounded corner cutout — not a collision
+            return { type: 'road', friction: 1.0 };
         }
-        if (fracX > (1 - threshold) && !this._isRoad(tileX + 1, tileY)) {
-            return { type: 'wall', normalX: -1, normalY: 0, side: 'wall' };
-        }
-        if (fracY < threshold && !this._isRoad(tileX, tileY - 1)) {
-            return { type: 'wall', normalX: 0, normalY: 1, side: 'wall' };
-        }
-        if (fracY > (1 - threshold) && !this._isRoad(tileX, tileY + 1)) {
-            return { type: 'wall', normalX: 0, normalY: -1, side: 'wall' };
-        }
+
+        // Straight wall edges
+        if (nearLeft) return { type: 'wall', normalX: 1, normalY: 0, side: 'wall' };
+        if (nearRight) return { type: 'wall', normalX: -1, normalY: 0, side: 'wall' };
+        if (nearUp) return { type: 'wall', normalX: 0, normalY: 1, side: 'wall' };
+        if (nearDown) return { type: 'wall', normalX: 0, normalY: -1, side: 'wall' };
 
         // On road, no wall nearby
         return { type: 'road', friction: 1.0 };
