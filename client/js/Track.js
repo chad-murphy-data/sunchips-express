@@ -41,7 +41,9 @@ export class Track {
         this.roadWidth = 0;
 
         // Guardrail collision width (in world units) — sub-tile edge detection threshold
-        this.guardrailWidth = 50;
+        // Must match wallOffset (-15) in ThreeRenderer.getWallRuns() so collision
+        // lines up with the visible wall meshes
+        this.guardrailWidth = 15;
 
         // Precomputed wall normals for collision detection
         this.wallNormals = null;

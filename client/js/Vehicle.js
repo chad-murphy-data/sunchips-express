@@ -260,9 +260,9 @@ export class Vehicle {
 
                 // Do NOT change heading — nose stays pointed at the wall
 
-                // Nudge out of collision zone (needs to be large enough to clear asymmetric zone)
-                this.x = newX + wallCollision.normalX * 40;
-                this.y = newY + wallCollision.normalY * 40;
+                // Nudge out of collision zone
+                this.x = newX + wallCollision.normalX * 20;
+                this.y = newY + wallCollision.normalY * 20;
 
             } else {
                 // Move to new position (no grass slowdown - it's all office floor)
