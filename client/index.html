@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sun Chips Express</title>
     <link rel="stylesheet" href="css/style.css">
     <script type="importmap">
@@ -58,6 +58,15 @@
                 <div class="lap-main">LAP COMPLETE!</div>
                 <div id="lap-time"></div>
             </div>
+        </div>
+
+        <!-- Touch Controls (mobile only, shown via JS) -->
+        <div id="touch-controls">
+            <div id="touch-drive-buttons">
+                <button class="touch-btn" id="touch-left">&#9664;</button>
+                <button class="touch-btn" id="touch-right">&#9654;</button>
+            </div>
+            <button class="touch-btn" id="touch-mash">MASH!</button>
         </div>
 
         <!-- Start/Lobby Screen -->

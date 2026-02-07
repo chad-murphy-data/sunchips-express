@@ -109,6 +109,12 @@ class Game {
 
         console.log('Game initialized');
 
+        // Set up touch controls for mobile
+        if (this.input.isMobile) {
+            this.input.setupTouchControls();
+            this.touchControls = document.getElementById('touch-controls');
+        }
+
         // Set up network callbacks
         this.setupNetworkCallbacks();
 
@@ -130,11 +136,16 @@ class Game {
 
             // Show connected panel
             const roleText = document.getElementById('role-text');
+            const inputHint = this.input.isMobile ? 'touch buttons' : 'A/D';
             if (role === 'host') {
-                roleText.textContent = 'You are the DRIVER (Steering with A/D)';
+                roleText.textContent = 'You are the DRIVER (Steering with ' + inputHint + ')';
             } else {
-                roleText.textContent = 'You are the PASSENGER (Pedals with A/D)';
+                roleText.textContent = 'You are the PASSENGER (Pedals with ' + inputHint + ')';
             }
+
+            // Update touch button labels for role
+            this.input.updateTouchLabels(role === 'host' ? 'steering' : 'pedals');
+
             this.showPanel('connected');
 
             // Start countdown
@@ -321,6 +332,11 @@ class Game {
         this.ui.show();
         this.ui.startTimer();
 
+        // Hide keyboard hint on mobile (touch controls replace it)
+        if (this.input.isMobile) {
+            document.getElementById('controls-hint').style.display = 'none';
+        }
+
         // Show network info in UI if networked
         if (this.mode !== 'local' && this.network.roomCode) {
             this.roomCodeDisplay.textContent = `Room: ${this.network.roomCode}`;
@@ -449,6 +465,7 @@ class Game {
                     this.gameState = 'approaching';
                     this.currentStation = station;
                     this.deliveryPrompt.classList.remove('hidden');
+                    if (this.touchControls) this.touchControls.classList.add('mash-active');
                     break;
                 }
             }
@@ -462,6 +479,7 @@ class Game {
                 this.gameState = 'driving';
                 this.currentStation = null;
                 this.deliveryPrompt.classList.add('hidden');
+                if (this.touchControls) this.touchControls.classList.remove('mash-active');
             } else {
                 // Check if a mash key was pressed to start delivery
                 const mashes = this.input.consumeMashes();
@@ -566,6 +584,7 @@ class Game {
             this.currentStation.delivered = true;
         }
         this.currentStation = null;
+        if (this.touchControls) this.touchControls.classList.remove('mash-active');
     }
 
     checkLapCompletion() {

@@ -505,3 +505,141 @@ body {
     font-weight: bold;
     color: #ffd700;
 }
+
+/* ===== Touch Controls (Mobile) ===== */
+
+#touch-controls {
+    display: none;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 10px 15px;
+    z-index: 50;
+    pointer-events: none;
+}
+
+/* Show touch controls when mobile is active and game is running */
+.touch-active #touch-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+#touch-drive-buttons {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    justify-content: center;
+    pointer-events: auto;
+}
+
+.touch-btn {
+    font-family: 'Courier New', monospace;
+    font-size: 28px;
+    font-weight: bold;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    padding: 18px 0;
+    flex: 1;
+    max-width: 200px;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.touch-btn:active,
+.touch-btn.pressed {
+    background: rgba(255, 215, 0, 0.35);
+    border-color: #ffd700;
+}
+
+#touch-mash {
+    display: none;
+    width: 100%;
+    max-width: 420px;
+    font-size: 32px;
+    padding: 24px 0;
+    background: rgba(255, 215, 0, 0.2);
+    border-color: #ffd700;
+    color: #ffd700;
+    animation: pulse 0.6s ease-in-out infinite;
+}
+
+/* Show mash button, hide drive buttons during delivery */
+.mash-active #touch-mash {
+    display: block;
+}
+
+.mash-active #touch-drive-buttons {
+    display: none;
+}
+
+/* Mobile fullscreen layout */
+.touch-active {
+    width: 100vw !important;
+    height: 100vh !important;
+}
+
+.touch-active #game-canvas {
+    touch-action: none;
+}
+
+/* Move speedometer up on mobile to avoid overlap with touch buttons */
+.touch-active #speedometer {
+    bottom: 120px;
+}
+
+/* Move delivery prompt up on mobile */
+.touch-active #delivery-prompt {
+    bottom: 160px;
+}
+
+.touch-active #delivery-bar-container {
+    bottom: 140px;
+}
+
+/* Smaller start screen elements on mobile */
+@media (max-width: 600px) {
+    #start-screen h1 {
+        font-size: 28px;
+        letter-spacing: 2px;
+    }
+
+    #start-screen .subtitle {
+        font-size: 14px;
+        margin-bottom: 20px;
+    }
+
+    #start-screen .instructions {
+        padding: 12px 20px;
+        margin-bottom: 20px;
+    }
+
+    #start-screen .instructions p {
+        font-size: 13px;
+    }
+
+    .menu-button {
+        padding: 12px 30px;
+        font-size: 16px;
+        min-width: 200px;
+    }
+
+    #room-code-large {
+        font-size: 48px;
+        letter-spacing: 8px;
+    }
+
+    #room-code-input {
+        font-size: 28px;
+        width: 180px;
+    }
+}

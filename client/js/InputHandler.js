@@ -24,6 +24,9 @@ export class InputHandler {
         this.networkMode = false;
         this.networkRole = null;  // 'steering' or 'pedals'
 
+        // Mobile detection
+        this.isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
         this.setupListeners();
     }
 
@@ -153,5 +156,85 @@ export class InputHandler {
             return this.keys.a || this.keys.d;
         }
         return this.keys.j || this.keys.l;
+    }
+
+    // === Touch Controls (Mobile) ===
+
+    setupTouchControls() {
+        if (!this.isMobile) return;
+
+        const container = document.getElementById('game-container');
+        container.classList.add('touch-active');
+
+        const btnLeft = document.getElementById('touch-left');
+        const btnRight = document.getElementById('touch-right');
+        const btnMash = document.getElementById('touch-mash');
+
+        // Helper: bind touch button to a key
+        const bindTouch = (btn, key) => {
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.keys[key] = true;
+                btn.classList.add('pressed');
+                // Also count as mash
+                if (this.rolesSwapped) {
+                    if (key === 'j' || key === 'l') this.mashCounts.player2++;
+                    if (key === 'a' || key === 'd') this.mashCounts.player1++;
+                } else {
+                    if (key === 'a' || key === 'd') this.mashCounts.player1++;
+                    if (key === 'j' || key === 'l') this.mashCounts.player2++;
+                }
+            }, { passive: false });
+
+            const release = (e) => {
+                e.preventDefault();
+                this.keys[key] = false;
+                btn.classList.remove('pressed');
+            };
+            btn.addEventListener('touchend', release, { passive: false });
+            btn.addEventListener('touchcancel', release, { passive: false });
+        };
+
+        // Left/right buttons map to A/D by default
+        bindTouch(btnLeft, 'a');
+        bindTouch(btnRight, 'd');
+
+        // Mash button — counts for both players so it works regardless of role
+        btnMash.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.mashCounts.player1++;
+            this.mashCounts.player2++;
+            btnMash.classList.add('pressed');
+        }, { passive: false });
+
+        btnMash.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            btnMash.classList.remove('pressed');
+        }, { passive: false });
+
+        btnMash.addEventListener('touchcancel', (e) => {
+            e.preventDefault();
+            btnMash.classList.remove('pressed');
+        }, { passive: false });
+
+        // Prevent default touch behavior on the game canvas
+        const canvas = document.getElementById('game-canvas');
+        canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+        canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    }
+
+    updateTouchLabels(role) {
+        if (!this.isMobile) return;
+
+        const btnLeft = document.getElementById('touch-left');
+        const btnRight = document.getElementById('touch-right');
+
+        if (role === 'pedals') {
+            btnLeft.textContent = 'BRK';
+            btnRight.textContent = 'GAS';
+        } else {
+            btnLeft.textContent = '\u25C0';
+            btnRight.textContent = '\u25B6';
+        }
     }
 }
