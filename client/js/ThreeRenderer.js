@@ -353,19 +353,9 @@ export class ThreeRenderer {
             wallCorner: 'assets/furniture/wallCorner.glb',
             wallCornerRond: 'assets/furniture/wallCornerRond.glb',
             wallHalf: 'assets/furniture/wallHalf.glb',
-            // Racing elements
-            barrierRed: 'assets/racing/barrierRed.glb',
-            barrierWhite: 'assets/racing/barrierWhite.glb',
+            // Racing elements (just what we use)
             flagCheckers: 'assets/racing/flagCheckers.glb',
-            flagCheckersSmall: 'assets/racing/flagCheckersSmall.glb',
-            flagGreen: 'assets/racing/flagGreen.glb',
-            flagRed: 'assets/racing/flagRed.glb',
-            bannerTowerGreen: 'assets/racing/bannerTowerGreen.glb',
-            bannerTowerRed: 'assets/racing/bannerTowerRed.glb',
             pylon: 'assets/racing/pylon.glb',
-            billboard: 'assets/racing/billboard.glb',
-            billboardLow: 'assets/racing/billboardLow.glb',
-            lightPostModern: 'assets/racing/lightPostModern.glb',
         };
 
         // Load all assets in parallel
@@ -880,69 +870,30 @@ export class ThreeRenderer {
     }
 
     buildRacingElements(track) {
-        const wallRuns = this.getWallRuns(track);
         const b = this._wallBounds;
         if (!b) return;
 
-        // === Barriers along road edges ===
-        const barrierSpacing = 250;
-        const barrierOffset = 25; // offset from wall toward road center
-
-        for (const run of wallRuns) {
-            const dx = run.end.x - run.start.x;
-            const dz = run.end.z - run.start.z;
-            const runLength = Math.sqrt(dx * dx + dz * dz);
-            if (runLength < barrierSpacing) continue;
-
-            const dirX = dx / runLength;
-            const dirZ = dz / runLength;
-
-            // Normal pointing into road (perpendicular to wall direction)
-            const isOuter = run.label.startsWith('outer');
-            const normalX = -dirZ * (isOuter ? 1 : -1);
-            const normalZ = dirX * (isOuter ? 1 : -1);
-
-            const numBarriers = Math.floor(runLength / barrierSpacing);
-            for (let i = 0; i < numBarriers; i++) {
-                const t = (i + 0.5) / numBarriers;
-                const bx = run.start.x + dx * t + normalX * barrierOffset;
-                const bz = run.start.z + dz * t + normalZ * barrierOffset;
-
-                const modelKey = (i % 2 === 0) ? 'barrierRed' : 'barrierWhite';
-                const barrier = this.cloneModel(modelKey, 12);
-                if (barrier) {
-                    barrier.position.set(bx, 0, bz);
-                    barrier.rotation.y = run.rotY;
-                    this.scene.add(barrier);
-                }
-            }
-        }
-
-        // === Start/Finish line ===
+        // === Start/Finish line — flags in a straight line across the road ===
         const startPos = track.getStartPosition();
-        // Start is on bottom straightaway heading west
-        // Road runs east-west, outer wall at higher z, inner wall at lower z
+        // Start is on bottom straightaway heading west (PI)
+        // Road runs east-west at z=startPos.y
+        // Outer wall at higher z, inner wall at lower z
+        // Place flags in a line perpendicular to the road (along Z axis) at startPos.x
+        const ts = track.tileSize;
+        const roadHalfWidth = (track.roadWidth * ts) / 2;
+        const roadCenterZ = startPos.y;
+        const numFlags = 5;
 
-        const flag1 = this.cloneModel('flagCheckers', 50);
-        if (flag1) {
-            flag1.position.set(startPos.x, 0, startPos.y + 60);
-            flag1.rotation.y = Math.PI;
-            this.scene.add(flag1);
-        }
+        for (let i = 0; i < numFlags; i++) {
+            // Evenly space flags across the road width
+            const t = (i / (numFlags - 1)) - 0.5; // -0.5 to 0.5
+            const flagZ = roadCenterZ + t * roadHalfWidth * 1.8; // spread across road
 
-        const flag2 = this.cloneModel('flagCheckers', 50);
-        if (flag2) {
-            flag2.position.set(startPos.x, 0, startPos.y - 60);
-            flag2.rotation.y = 0;
-            this.scene.add(flag2);
-        }
-
-        // Small flanking flags
-        for (const [dx, dz] of [[-80, 40], [80, 40], [-80, -40], [80, -40]]) {
-            const sf = this.cloneModel('flagCheckersSmall', 30);
-            if (sf) {
-                sf.position.set(startPos.x + dx, 0, startPos.y + dz);
-                this.scene.add(sf);
+            const flag = this.cloneModel('flagCheckers', 40);
+            if (flag) {
+                flag.position.set(startPos.x, 0, flagZ);
+                flag.rotation.y = Math.PI / 2; // face along the road
+                this.scene.add(flag);
             }
         }
 
@@ -968,72 +919,6 @@ export class ThreeRenderer {
                     const pz = (((seed * 3) % 40) - 20);
                     pylon.position.set(corner.x + px, 0, corner.z + pz);
                     this.scene.add(pylon);
-                }
-            }
-        }
-
-        // === Banner towers at straightaway midpoints ===
-        const midpoints = [
-            { x: (b.outerLeft + b.outerRight) / 2, z: b.outerTop - 30, rotY: 0 },
-            { x: (b.outerLeft + b.outerRight) / 2, z: b.outerBottom + 30, rotY: Math.PI },
-            { x: b.outerLeft - 30, z: (b.outerTop + b.outerBottom) / 2, rotY: Math.PI / 2 },
-            { x: b.outerRight + 30, z: (b.outerTop + b.outerBottom) / 2, rotY: -Math.PI / 2 },
-        ];
-
-        midpoints.forEach((mp, i) => {
-            const key = (i % 2 === 0) ? 'bannerTowerGreen' : 'bannerTowerRed';
-            const tower = this.cloneModel(key, 70);
-            if (tower) {
-                tower.position.set(mp.x, 0, mp.z);
-                tower.rotation.y = mp.rotY;
-                this.scene.add(tower);
-            }
-        });
-
-        // === Billboards outside the track ===
-        const billboardPositions = [
-            { x: b.outerLeft - 80, z: b.outerTop + 300, rotY: Math.PI / 2 },
-            { x: b.outerRight + 80, z: b.outerBottom - 300, rotY: -Math.PI / 2 },
-            { x: b.outerLeft + 400, z: b.outerTop - 80, rotY: 0 },
-            { x: b.outerRight - 400, z: b.outerBottom + 80, rotY: Math.PI },
-        ];
-
-        billboardPositions.forEach((bp, i) => {
-            const key = (i % 2 === 0) ? 'billboard' : 'billboardLow';
-            const bb = this.cloneModel(key, 55);
-            if (bb) {
-                bb.position.set(bp.x, 0, bp.z);
-                bb.rotation.y = bp.rotY;
-                this.scene.add(bb);
-            }
-        });
-
-        // === Light posts along outer straightaways ===
-        const lightSpacing = 400;
-        for (const run of wallRuns) {
-            if (!run.label.startsWith('outer')) continue;
-            const dx = run.end.x - run.start.x;
-            const dz = run.end.z - run.start.z;
-            const runLength = Math.sqrt(dx * dx + dz * dz);
-            if (runLength < lightSpacing) continue;
-
-            const dirX = dx / runLength;
-            const dirZ = dz / runLength;
-            const numLights = Math.floor(runLength / lightSpacing);
-
-            for (let i = 0; i < numLights; i++) {
-                const t = (i + 0.5) / numLights;
-                const lx = run.start.x + dx * t;
-                const lz = run.start.z + dz * t;
-
-                const light = this.cloneModel('lightPostModern', 75);
-                if (light) {
-                    // Position just outside the wall
-                    const normalX = dirZ; // perpendicular, pointing outward from outer wall
-                    const normalZ = -dirX;
-                    light.position.set(lx + normalX * 30, 0, lz + normalZ * 30);
-                    light.rotation.y = run.rotY;
-                    this.scene.add(light);
                 }
             }
         }
