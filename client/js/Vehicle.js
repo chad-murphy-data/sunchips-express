@@ -42,6 +42,9 @@ export class Vehicle {
 
         // Collision tracking for visual effects
         this.lastCollisionForce = 0;
+
+        // Freeze flag for delivery stops
+        this.frozen = false;
     }
 
     // Get collision check points (front corners and center)
@@ -83,6 +86,14 @@ export class Vehicle {
     }
 
     update(dt, steerInput, pedalInput, track) {
+        // ===== FROZEN (parked for delivery) =====
+        if (this.frozen) {
+            this.speed = 0;
+            this.angularVelocity = 0;
+            this.steerState = 0;
+            return;
+        }
+
         // ===== WALL BOUNCE (overrides normal movement while active) =====
         if (this.bounceDuration > 0) {
             this.bounceDuration -= dt;

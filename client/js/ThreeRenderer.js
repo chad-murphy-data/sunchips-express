@@ -445,6 +445,7 @@ export class ThreeRenderer {
         this.buildLighting();
         this.buildTiledWalls(track);
         this.buildRacingElements(track);
+        this.buildSnackStations(track);
         this.buildFurniture(track);
         this.buildCart();
     }
@@ -921,6 +922,36 @@ export class ThreeRenderer {
                     this.scene.add(pylon);
                 }
             }
+        }
+    }
+
+    buildSnackStations(track) {
+        if (!track.snackStations) return;
+
+        this.stationRings = [];
+
+        for (const station of track.snackStations) {
+            // Vending machine model
+            const vm = this.cloneModel('vendingMachine', 45);
+            if (vm) {
+                vm.position.set(station.x, 0, station.y);
+                vm.rotation.y = Math.PI / 2;
+                this.scene.add(vm);
+            }
+
+            // Yellow ring on the floor (delivery zone indicator)
+            const ringGeo = new THREE.RingGeometry(station.radius * 0.7, station.radius, 32);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0xFFD700,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide,
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = -Math.PI / 2; // Lay flat on floor
+            ring.position.set(station.x, 0.5, station.y); // Just above floor
+            this.scene.add(ring);
+            this.stationRings.push(ring);
         }
     }
 
@@ -1874,6 +1905,14 @@ export class ThreeRenderer {
 
         // Update particles
         this.updateParticles(dt);
+
+        // Pulse snack station rings
+        if (this.stationRings) {
+            const time = performance.now() / 1000;
+            for (const ring of this.stationRings) {
+                ring.material.opacity = 0.25 + 0.15 * Math.sin(time * 2);
+            }
+        }
 
         // Skid effect when turning hard at speed
         if (Math.abs(vehicle.steerState) > 0 && Math.abs(vehicle.speed) > 100) {

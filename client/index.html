@@ -33,6 +33,31 @@
             </div>
             <div id="room-code-display"></div>
             <div id="network-role-display"></div>
+
+            <!-- Delivery UI overlays -->
+            <div id="delivery-prompt" class="delivery-ui hidden">STOP TO DELIVER!</div>
+
+            <div id="delivery-bar-container" class="delivery-ui hidden">
+                <div class="delivery-label">MASH THOSE BUTTONS!</div>
+                <div class="delivery-bar-bg">
+                    <div id="delivery-bar-fill"></div>
+                </div>
+                <div class="delivery-keys">P1: F &nbsp;&nbsp; P2: SPACE</div>
+            </div>
+
+            <div id="swap-announce" class="delivery-ui hidden">
+                <div class="swap-main">ROLES SWAPPED!</div>
+                <div id="swap-detail"></div>
+            </div>
+
+            <div id="delivery-countdown" class="delivery-ui hidden">
+                <div id="delivery-countdown-number">3</div>
+            </div>
+
+            <div id="lap-complete" class="delivery-ui hidden">
+                <div class="lap-main">LAP COMPLETE!</div>
+                <div id="lap-time"></div>
+            </div>
         </div>
 
         <!-- Start/Lobby Screen -->

@@ -277,6 +277,24 @@ export class Track {
             });
         }
 
+        // Snack station on the far side of track from spawn
+        // Spawn is at bottom-right heading west; station goes on top straightaway
+        this.snackStations = [{
+            x: (left + 4) * ts,
+            y: (top + w / 2) * ts,
+            radius: 150,
+            delivered: false,
+            id: 1
+        }];
+
+        // Start/finish zone — same area as spawn
+        const startPos = this.getStartPosition();
+        this.startFinishZone = {
+            x: startPos.x,
+            y: startPos.y,
+            radius: 200
+        };
+
         return this;
     }
 

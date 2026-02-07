@@ -51,6 +51,30 @@ class Game {
 
         this.roomCodeDisplay = document.getElementById('room-code-display');
         this.networkRoleDisplay = document.getElementById('network-role-display');
+
+        // Delivery state machine
+        this.gameState = 'driving'; // driving | approaching | delivering | swap_announce | countdown
+        this.deliveryProgress = 0;
+        this.stateTimer = 0;
+        this.currentStation = null;
+
+        // Delivery tuning
+        this.FILL_PER_MASH = 3;
+        this.DECAY_PER_SECOND = 8;
+
+        // Delivery UI elements
+        this.deliveryPrompt = document.getElementById('delivery-prompt');
+        this.deliveryBarContainer = document.getElementById('delivery-bar-container');
+        this.deliveryBarFill = document.getElementById('delivery-bar-fill');
+        this.swapAnnounce = document.getElementById('swap-announce');
+        this.swapDetail = document.getElementById('swap-detail');
+        this.deliveryCountdown = document.getElementById('delivery-countdown');
+        this.deliveryCountdownNumber = document.getElementById('delivery-countdown-number');
+        this.lapComplete = document.getElementById('lap-complete');
+        this.lapTime = document.getElementById('lap-time');
+
+        // Track if player has left start zone (prevent immediate lap complete)
+        this.hasLeftStartZone = false;
     }
 
     async init() {
@@ -347,57 +371,231 @@ class Game {
     }
 
     update(dt) {
-        if (this.mode === 'local') {
-            // Local co-op: both players on same keyboard
-            const steering = this.input.getSteering();
-            const pedals = this.input.getPedals();
-            this.vehicle.update(dt, steering, pedals, this.track);
-        } else if (this.mode === 'host') {
-            // Host: runs physics, combines local + remote input
-            const localInput = this.input.getLocalInput();
-            const remoteInput = this.network.guestInput;
-
-            // Host controls steering, guest controls pedals (initially)
-            const steering = this.input.networkRole === 'steering'
-                ? localInput
-                : remoteInput.steering;
-            const pedals = this.input.networkRole === 'pedals'
-                ? localInput
-                : remoteInput.pedals;
-
-            this.vehicle.update(dt, steering, pedals, this.track);
-
-            // Send state to guest every other frame (~30fps)
-            if (this.frameCount % 2 === 0) {
-                this.network.sendGameState(this.vehicle);
-            }
-        } else if (this.mode === 'guest') {
-            // Guest: sends input, interpolates toward received state
-            const localInput = this.input.getLocalInput();
-
-            // Guest controls pedals initially
-            if (this.input.networkRole === 'steering') {
-                this.network.sendInput(localInput, 0);
-            } else {
-                this.network.sendInput(0, localInput);
+        // === Vehicle physics (only during driving/approaching states) ===
+        if (this.gameState === 'driving' || this.gameState === 'approaching') {
+            if (this.mode === 'local') {
+                const steering = this.input.getSteering();
+                const pedals = this.input.getPedals();
+                this.vehicle.update(dt, steering, pedals, this.track);
+            } else if (this.mode === 'host') {
+                const localInput = this.input.getLocalInput();
+                const remoteInput = this.network.guestInput;
+                const steering = this.input.networkRole === 'steering'
+                    ? localInput : remoteInput.steering;
+                const pedals = this.input.networkRole === 'pedals'
+                    ? localInput : remoteInput.pedals;
+                this.vehicle.update(dt, steering, pedals, this.track);
+                if (this.frameCount % 2 === 0) {
+                    this.network.sendGameState(this.vehicle);
+                }
+            } else if (this.mode === 'guest') {
+                const localInput = this.input.getLocalInput();
+                if (this.input.networkRole === 'steering') {
+                    this.network.sendInput(localInput, 0);
+                } else {
+                    this.network.sendInput(0, localInput);
+                }
             }
 
-            // Interpolate vehicle toward latest received state
-            // The vehicle already gets updated via onGameState callback
+            // Check station proximity
+            this.checkStationProximity();
+
+            // Check lap completion
+            this.checkLapCompletion();
         }
 
-        // Update camera to follow vehicle
+        // === Delivery mashing ===
+        if (this.gameState === 'delivering') {
+            this.updateDelivery(dt);
+        }
+
+        // === Timed state transitions ===
+        if (this.gameState === 'swap_announce' || this.gameState === 'countdown') {
+            this.updateStateTimer(dt);
+        }
+
+        // === Always update camera, collision effects, UI ===
         this.camera.follow(this.vehicle);
 
-        // Trigger collision effects for hard hits
         if (this.vehicle.lastCollisionForce > 30) {
             this.threeRenderer.triggerCollisionEffect(this.vehicle.x, this.vehicle.y);
             this.vehicle.lastCollisionForce = 0;
         }
 
-        // Update UI
         const networkRole = this.mode !== 'local' ? this.input.networkRole : null;
         this.ui.update(this.vehicle, this.input.rolesSwapped, networkRole);
+    }
+
+    // === Delivery State Machine Methods ===
+
+    distToStation(station) {
+        const dx = this.vehicle.x - station.x;
+        const dy = this.vehicle.y - station.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    checkStationProximity() {
+        if (!this.track.snackStations) return;
+
+        for (const station of this.track.snackStations) {
+            if (station.delivered) continue;
+
+            const dist = this.distToStation(station);
+            const speed = Math.abs(this.vehicle.speed);
+
+            if (this.gameState === 'driving') {
+                if (dist < station.radius && speed < 15) {
+                    this.gameState = 'approaching';
+                    this.currentStation = station;
+                    this.deliveryPrompt.classList.remove('hidden');
+                }
+            } else if (this.gameState === 'approaching') {
+                if (dist > station.radius || speed > 30) {
+                    // Drove away
+                    this.gameState = 'driving';
+                    this.currentStation = null;
+                    this.deliveryPrompt.classList.add('hidden');
+                } else {
+                    // Check if a mash key was pressed to start delivery
+                    const mashes = this.input.consumeMashes();
+                    if (mashes.player1 > 0 || mashes.player2 > 0) {
+                        this.enterDelivering();
+                    }
+                }
+            }
+        }
+
+        // Track if player has left start zone (for lap completion)
+        if (!this.hasLeftStartZone && this.track.startFinishZone) {
+            const sfz = this.track.startFinishZone;
+            const dx = this.vehicle.x - sfz.x;
+            const dy = this.vehicle.y - sfz.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > sfz.radius * 1.5) {
+                this.hasLeftStartZone = true;
+            }
+        }
+    }
+
+    enterDelivering() {
+        this.gameState = 'delivering';
+        this.deliveryProgress = 0;
+        this.vehicle.frozen = true;
+        this.vehicle.speed = 0;
+        this.deliveryPrompt.classList.add('hidden');
+        this.deliveryBarContainer.classList.remove('hidden');
+        this.deliveryBarFill.style.width = '0%';
+    }
+
+    updateDelivery(dt) {
+        const mashes = this.input.consumeMashes();
+        const totalMashes = mashes.player1 + mashes.player2;
+
+        this.deliveryProgress += totalMashes * this.FILL_PER_MASH;
+
+        // Decay if nobody mashed
+        if (totalMashes === 0) {
+            this.deliveryProgress -= this.DECAY_PER_SECOND * dt;
+        }
+
+        this.deliveryProgress = Math.max(0, Math.min(100, this.deliveryProgress));
+        this.deliveryBarFill.style.width = this.deliveryProgress + '%';
+
+        if (this.deliveryProgress >= 100) {
+            this.enterSwapAnnounce();
+        }
+    }
+
+    enterSwapAnnounce() {
+        this.gameState = 'swap_announce';
+        this.stateTimer = 0;
+        this.deliveryBarContainer.classList.add('hidden');
+
+        // Swap roles
+        this.input.swapRoles();
+
+        // Show announcement
+        if (this.input.rolesSwapped) {
+            this.swapDetail.innerHTML = 'P1 (A/D): NOW ON PEDALS<br>P2 (J/L): NOW STEERING';
+        } else {
+            this.swapDetail.innerHTML = 'P1 (A/D): STEERING<br>P2 (J/L): PEDALS';
+        }
+        this.swapAnnounce.classList.remove('hidden');
+    }
+
+    updateStateTimer(dt) {
+        this.stateTimer += dt;
+
+        if (this.gameState === 'swap_announce') {
+            if (this.stateTimer >= 2.0) {
+                this.swapAnnounce.classList.add('hidden');
+                this.gameState = 'countdown';
+                this.stateTimer = 0;
+                this.deliveryCountdown.classList.remove('hidden');
+                this.deliveryCountdownNumber.textContent = '3';
+                this.deliveryCountdownNumber.style.color = '#fff';
+            }
+        } else if (this.gameState === 'countdown') {
+            const remaining = 3 - Math.floor(this.stateTimer);
+            if (remaining > 0) {
+                this.deliveryCountdownNumber.textContent = remaining.toString();
+                this.deliveryCountdownNumber.style.color = '#fff';
+            } else if (this.stateTimer < 4.0) {
+                this.deliveryCountdownNumber.textContent = 'GO!';
+                this.deliveryCountdownNumber.style.color = '#0f0';
+            }
+
+            if (this.stateTimer >= 4.0) {
+                this.deliveryCountdown.classList.add('hidden');
+                this.finishDelivery();
+            }
+        }
+    }
+
+    finishDelivery() {
+        this.gameState = 'driving';
+        this.vehicle.frozen = false;
+        this.deliveryProgress = 0;
+        if (this.currentStation) {
+            this.currentStation.delivered = true;
+        }
+        this.currentStation = null;
+    }
+
+    checkLapCompletion() {
+        if (!this.track.startFinishZone || !this.hasLeftStartZone) return;
+
+        // Check if all stations delivered
+        const allDelivered = this.track.snackStations &&
+            this.track.snackStations.every(s => s.delivered);
+        if (!allDelivered) return;
+
+        // Check if in start/finish zone
+        const sfz = this.track.startFinishZone;
+        const dx = this.vehicle.x - sfz.x;
+        const dy = this.vehicle.y - sfz.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < sfz.radius) {
+            this.completeLap();
+        }
+    }
+
+    completeLap() {
+        this.ui.stopTimer();
+        const elapsed = this.ui.getElapsedTime();
+        this.lapTime.textContent = this.ui.formatTime(elapsed);
+        this.lapComplete.classList.remove('hidden');
+
+        // Reset stations for next lap after a delay
+        setTimeout(() => {
+            this.lapComplete.classList.add('hidden');
+            for (const station of this.track.snackStations) {
+                station.delivered = false;
+            }
+            this.hasLeftStartZone = false;
+            this.ui.startTimer();
+        }, 4000);
     }
 
     render(dt) {

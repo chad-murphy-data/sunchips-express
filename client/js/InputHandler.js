@@ -17,6 +17,9 @@ export class InputHandler {
         // Role swap support (for local co-op)
         this.rolesSwapped = false;
 
+        // Mash counting for delivery mechanic
+        this.mashCounts = { player1: 0, player2: 0 };
+
         // Network mode settings
         this.networkMode = false;
         this.networkRole = null;  // 'steering' or 'pedals'
@@ -30,6 +33,24 @@ export class InputHandler {
             if (key in this.keys) {
                 this.keys[key] = true;
                 e.preventDefault();
+            }
+
+            // Mash counting — dedicated mash keys + driving keys
+            if (key === 'f') {
+                this.mashCounts.player1++;
+                e.preventDefault();
+            }
+            if (key === ' ') {
+                this.mashCounts.player2++;
+                e.preventDefault();
+            }
+            // Also count driving keys as mashes
+            if (this.rolesSwapped) {
+                if (key === 'j' || key === 'l') this.mashCounts.player2++;
+                if (key === 'a' || key === 'd') this.mashCounts.player1++;
+            } else {
+                if (key === 'a' || key === 'd') this.mashCounts.player1++;
+                if (key === 'j' || key === 'l') this.mashCounts.player2++;
             }
         });
 
@@ -50,6 +71,13 @@ export class InputHandler {
 
     swapRoles() {
         this.rolesSwapped = !this.rolesSwapped;
+    }
+
+    consumeMashes() {
+        const counts = { player1: this.mashCounts.player1, player2: this.mashCounts.player2 };
+        this.mashCounts.player1 = 0;
+        this.mashCounts.player2 = 0;
+        return counts;
     }
 
     // Get steering input (-1 = left, 0 = straight, 1 = right)
