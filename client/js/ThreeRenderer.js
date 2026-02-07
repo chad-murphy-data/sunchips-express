@@ -344,6 +344,28 @@ export class ThreeRenderer {
             arcadeMachine: 'assets/arcade/arcade-machine.glb',
             // Food items for decoration
             bag: 'assets/food/bag.glb',
+            // Wall pieces (furniture set)
+            wall: 'assets/furniture/wall.glb',
+            wallWindow: 'assets/furniture/wallWindow.glb',
+            wallWindowSlide: 'assets/furniture/wallWindowSlide.glb',
+            wallDoorway: 'assets/furniture/wallDoorway.glb',
+            wallDoorwayWide: 'assets/furniture/wallDoorwayWide.glb',
+            wallCorner: 'assets/furniture/wallCorner.glb',
+            wallCornerRond: 'assets/furniture/wallCornerRond.glb',
+            wallHalf: 'assets/furniture/wallHalf.glb',
+            // Racing elements
+            barrierRed: 'assets/racing/barrierRed.glb',
+            barrierWhite: 'assets/racing/barrierWhite.glb',
+            flagCheckers: 'assets/racing/flagCheckers.glb',
+            flagCheckersSmall: 'assets/racing/flagCheckersSmall.glb',
+            flagGreen: 'assets/racing/flagGreen.glb',
+            flagRed: 'assets/racing/flagRed.glb',
+            bannerTowerGreen: 'assets/racing/bannerTowerGreen.glb',
+            bannerTowerRed: 'assets/racing/bannerTowerRed.glb',
+            pylon: 'assets/racing/pylon.glb',
+            billboard: 'assets/racing/billboard.glb',
+            billboardLow: 'assets/racing/billboardLow.glb',
+            lightPostModern: 'assets/racing/lightPostModern.glb',
         };
 
         // Load all assets in parallel
@@ -359,6 +381,19 @@ export class ThreeRenderer {
         });
 
         await Promise.all(loadPromises);
+
+        // Measure wall model dimensions for tiling
+        this.wallModelWidths = {};
+        for (const key of ['wall', 'wallWindow', 'wallWindowSlide', 'wallDoorway', 'wallDoorwayWide', 'wallHalf']) {
+            const model = this.loadedModels[key];
+            if (model) {
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                this.wallModelWidths[key] = { width: size.x, height: size.y, depth: size.z };
+                console.log(`Wall model ${key}: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`);
+            }
+        }
+
         console.log('All assets loaded');
     }
 
@@ -418,7 +453,8 @@ export class ThreeRenderer {
         this.buildFloor(track);
         this.buildCeiling(track);
         this.buildLighting();
-        this.buildCubicleWalls(track);
+        this.buildTiledWalls(track);
+        this.buildRacingElements(track);
         this.buildFurniture(track);
         this.buildCart();
     }
@@ -691,122 +727,316 @@ export class ThreeRenderer {
         this.scene.add(fillLight);
     }
 
-    buildCubicleWalls(track) {
+    getWallRuns(track) {
         const ts = track.tileSize;
-        const wallHeight = this.WALL_HEIGHT;
-        const wallThickness = this.WALL_THICKNESS;
+        const wallOffset = -15;
+        const cornerGap = this.WALL_THICKNESS * 4;
 
-        // Offset to push walls to match where players hit them
-        // Physics guardrailWidth=50, 70% extends INTO road (35 units), 30% outside (15 units)
-        // The collision "bites" when you're 35 units from the track edge INTO the road
-        // Visual wall should be pushed INTO the road to match collision zone
-        // Negative value = walls move into road (where collision actually triggers)
-        const wallOffset = -15; // Move walls 15 units into road to match physics
+        const outerLeft = track.roadLeft * ts - wallOffset;
+        const outerRight = (track.roadRight + track.roadWidth) * ts + wallOffset;
+        const outerTop = track.roadTop * ts - wallOffset;
+        const outerBottom = (track.roadBottom + track.roadWidth) * ts + wallOffset;
 
-        // Use shared materials
+        const innerLeft = (track.roadLeft + track.roadWidth) * ts + wallOffset;
+        const innerRight = track.roadRight * ts - wallOffset;
+        const innerTop = (track.roadTop + track.roadWidth) * ts + wallOffset;
+        const innerBottom = track.roadBottom * ts - wallOffset;
+
+        // Store computed bounds for use by other methods
+        this._wallBounds = { outerLeft, outerRight, outerTop, outerBottom, innerLeft, innerRight, innerTop, innerBottom };
+
+        return [
+            // Outer walls - facing inward toward road
+            { start: {x: outerLeft + cornerGap, z: outerTop},   end: {x: outerRight - cornerGap, z: outerTop},   rotY: 0,            label: 'outerTop' },
+            { start: {x: outerLeft + cornerGap, z: outerBottom}, end: {x: outerRight - cornerGap, z: outerBottom}, rotY: Math.PI,      label: 'outerBottom' },
+            { start: {x: outerLeft, z: outerTop + cornerGap},   end: {x: outerLeft, z: outerBottom - cornerGap},   rotY: Math.PI / 2,  label: 'outerLeft' },
+            { start: {x: outerRight, z: outerTop + cornerGap},  end: {x: outerRight, z: outerBottom - cornerGap},  rotY: -Math.PI / 2, label: 'outerRight' },
+            // Inner walls - facing outward toward road
+            { start: {x: innerLeft + cornerGap, z: innerTop},   end: {x: innerRight - cornerGap, z: innerTop},   rotY: Math.PI,      label: 'innerTop' },
+            { start: {x: innerLeft + cornerGap, z: innerBottom}, end: {x: innerRight - cornerGap, z: innerBottom}, rotY: 0,            label: 'innerBottom' },
+            { start: {x: innerLeft, z: innerTop + cornerGap},   end: {x: innerLeft, z: innerBottom - cornerGap},   rotY: -Math.PI / 2, label: 'innerLeft' },
+            { start: {x: innerRight, z: innerTop + cornerGap},  end: {x: innerRight, z: innerBottom - cornerGap},  rotY: Math.PI / 2,  label: 'innerRight' },
+        ];
+    }
+
+    pickWallVariant(index) {
+        const pattern = index % 7;
+        switch (pattern) {
+            case 2: return 'wallWindow';
+            case 5: return 'wallDoorway';
+            default: return 'wall';
+        }
+    }
+
+    createFallbackWallSegment(x, z, width, thickness, rotY) {
         const m = this.materials;
+        const geo = new THREE.BoxGeometry(width, this.WALL_HEIGHT, thickness);
+        const wall = new THREE.Mesh(geo, m.cubicleGray);
+        wall.position.set(x, this.WALL_HEIGHT / 2, z);
+        wall.rotation.y = rotY;
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        this.scene.add(wall);
 
-        const createWall = (x, z, width, depth, type = 'cubicle') => {
-            // Main wall panel
-            const geo = new THREE.BoxGeometry(width, wallHeight, depth);
-            const wall = new THREE.Mesh(geo, m.cubicleGray);
-            wall.position.set(x, wallHeight / 2, z);
-            wall.castShadow = true;
-            wall.receiveShadow = true;
-            this.scene.add(wall);
+        const frameGeo = new THREE.BoxGeometry(width + 2, 3, thickness + 2);
+        const frame = new THREE.Mesh(frameGeo, m.cubicleFrame);
+        frame.position.set(x, this.WALL_HEIGHT, z);
+        frame.rotation.y = rotY;
+        this.scene.add(frame);
+    }
 
-            // Metal top frame
-            const frameGeo = new THREE.BoxGeometry(width + 2, 3, depth + 2);
-            const frame = new THREE.Mesh(frameGeo, m.cubicleFrame);
-            frame.position.set(x, wallHeight, z);
-            this.scene.add(frame);
-        };
+    buildTiledWalls(track) {
+        const wallRuns = this.getWallRuns(track);
 
-        // Track boundaries
-        const left = track.roadLeft;
-        const right = track.roadRight;
-        const top = track.roadTop;
-        const bottom = track.roadBottom;
-        const w = track.roadWidth;
+        // Determine tiling stride from the wall model
+        const wallInfo = this.wallModelWidths && this.wallModelWidths['wall'];
+        if (!wallInfo || !this.loadedModels['wall']) {
+            // Full fallback: use old box-geometry walls
+            console.warn('Wall GLBs not available, using procedural fallback');
+            for (const run of wallRuns) {
+                const dx = run.end.x - run.start.x;
+                const dz = run.end.z - run.start.z;
+                const runLength = Math.sqrt(dx * dx + dz * dz);
+                const cx = (run.start.x + run.end.x) / 2;
+                const cz = (run.start.z + run.end.z) / 2;
+                // Determine if wall runs along X or Z
+                const isHorizontal = Math.abs(dx) > Math.abs(dz);
+                if (isHorizontal) {
+                    this.createFallbackWallSegment(cx, cz, runLength, this.WALL_THICKNESS, 0);
+                } else {
+                    this.createFallbackWallSegment(cx, cz, this.WALL_THICKNESS, runLength, 0);
+                }
+            }
+            return;
+        }
 
-        // Outer walls (world coordinates) - pushed OUTWARD by wallOffset
-        const outerLeft = left * ts - wallOffset;
-        const outerRight = (right + w) * ts + wallOffset;
-        const outerTop = top * ts - wallOffset;
-        const outerBottom = (bottom + w) * ts + wallOffset;
+        // Scale factor: match wall model height to our WALL_HEIGHT
+        const scaleFactor = this.WALL_HEIGHT / wallInfo.height;
+        // Tiling stride in world units (use the larger of width/depth as the tiling dimension)
+        const tileWidth = Math.max(wallInfo.width, wallInfo.depth) * scaleFactor;
+        console.log(`Wall tiling: scaleFactor=${scaleFactor.toFixed(2)}, tileWidth=${tileWidth.toFixed(1)}`);
 
-        // Inner walls - pushed INWARD by wallOffset (which means adding offset to left/top, subtracting from right/bottom)
-        const innerLeft = (left + w) * ts + wallOffset;
-        const innerRight = right * ts - wallOffset;
-        const innerTop = (top + w) * ts + wallOffset;
-        const innerBottom = bottom * ts - wallOffset;
+        for (const run of wallRuns) {
+            const dx = run.end.x - run.start.x;
+            const dz = run.end.z - run.start.z;
+            const runLength = Math.sqrt(dx * dx + dz * dz);
+            const numTiles = Math.max(1, Math.floor(runLength / tileWidth));
+            const dirX = dx / runLength;
+            const dirZ = dz / runLength;
 
-        // Gap size at corners for visibility - larger for better sightlines
-        const cornerGap = wallThickness * 4;
+            // Spread tiles evenly across the run
+            const actualStride = runLength / numTiles;
 
-        // Outer top wall (with corner gaps)
-        createWall(
-            (outerLeft + outerRight) / 2,
-            outerTop,
-            outerRight - outerLeft - cornerGap * 2,
-            wallThickness
-        );
+            for (let i = 0; i < numTiles; i++) {
+                const modelKey = this.pickWallVariant(i);
+                const model = this.cloneModel(modelKey, this.WALL_HEIGHT);
 
-        // Outer bottom wall
-        createWall(
-            (outerLeft + outerRight) / 2,
-            outerBottom,
-            outerRight - outerLeft - cornerGap * 2,
-            wallThickness
-        );
+                if (!model) {
+                    // Per-tile fallback
+                    const cx = run.start.x + dirX * (i * actualStride + actualStride / 2);
+                    const cz = run.start.z + dirZ * (i * actualStride + actualStride / 2);
+                    this.createFallbackWallSegment(cx, cz, actualStride, this.WALL_THICKNESS, run.rotY);
+                    continue;
+                }
 
-        // Outer left wall
-        createWall(
-            outerLeft,
-            (outerTop + outerBottom) / 2,
-            wallThickness,
-            outerBottom - outerTop - cornerGap * 2
-        );
+                const cx = run.start.x + dirX * (i * actualStride + actualStride / 2);
+                const cz = run.start.z + dirZ * (i * actualStride + actualStride / 2);
 
-        // Outer right wall
-        createWall(
-            outerRight,
-            (outerTop + outerBottom) / 2,
-            wallThickness,
-            outerBottom - outerTop - cornerGap * 2
-        );
+                model.position.set(cx, 0, cz);
+                model.rotation.y = run.rotY;
+                this.scene.add(model);
+            }
+        }
 
-        // Inner top wall
-        createWall(
-            (innerLeft + innerRight) / 2,
-            innerTop,
-            innerRight - innerLeft - cornerGap * 2,
-            wallThickness
-        );
+        // Place corner pieces
+        this.placeCornerPieces();
+    }
 
-        // Inner bottom wall
-        createWall(
-            (innerLeft + innerRight) / 2,
-            innerBottom,
-            innerRight - innerLeft - cornerGap * 2,
-            wallThickness
-        );
+    placeCornerPieces() {
+        const b = this._wallBounds;
+        if (!b) return;
 
-        // Inner left wall
-        createWall(
-            innerLeft,
-            (innerTop + innerBottom) / 2,
-            wallThickness,
-            innerBottom - innerTop - cornerGap * 2
-        );
+        const corners = [
+            // Outer corners (rounded for smooth appearance)
+            { x: b.outerLeft,  z: b.outerTop,    rotY: 0,              model: 'wallCornerRond' },
+            { x: b.outerRight, z: b.outerTop,    rotY: -Math.PI / 2,  model: 'wallCornerRond' },
+            { x: b.outerLeft,  z: b.outerBottom, rotY: Math.PI / 2,   model: 'wallCornerRond' },
+            { x: b.outerRight, z: b.outerBottom, rotY: Math.PI,       model: 'wallCornerRond' },
+            // Inner corners (sharp)
+            { x: b.innerLeft,  z: b.innerTop,    rotY: Math.PI,       model: 'wallCorner' },
+            { x: b.innerRight, z: b.innerTop,    rotY: Math.PI / 2,   model: 'wallCorner' },
+            { x: b.innerLeft,  z: b.innerBottom, rotY: -Math.PI / 2,  model: 'wallCorner' },
+            { x: b.innerRight, z: b.innerBottom, rotY: 0,             model: 'wallCorner' },
+        ];
 
-        // Inner right wall
-        createWall(
-            innerRight,
-            (innerTop + innerBottom) / 2,
-            wallThickness,
-            innerBottom - innerTop - cornerGap * 2
-        );
+        for (const corner of corners) {
+            const piece = this.cloneModel(corner.model, this.WALL_HEIGHT);
+            if (piece) {
+                piece.position.set(corner.x, 0, corner.z);
+                piece.rotation.y = corner.rotY;
+                this.scene.add(piece);
+            }
+        }
+    }
+
+    buildRacingElements(track) {
+        const wallRuns = this.getWallRuns(track);
+        const b = this._wallBounds;
+        if (!b) return;
+
+        // === Barriers along road edges ===
+        const barrierSpacing = 250;
+        const barrierOffset = 25; // offset from wall toward road center
+
+        for (const run of wallRuns) {
+            const dx = run.end.x - run.start.x;
+            const dz = run.end.z - run.start.z;
+            const runLength = Math.sqrt(dx * dx + dz * dz);
+            if (runLength < barrierSpacing) continue;
+
+            const dirX = dx / runLength;
+            const dirZ = dz / runLength;
+
+            // Normal pointing into road (perpendicular to wall direction)
+            const isOuter = run.label.startsWith('outer');
+            const normalX = -dirZ * (isOuter ? 1 : -1);
+            const normalZ = dirX * (isOuter ? 1 : -1);
+
+            const numBarriers = Math.floor(runLength / barrierSpacing);
+            for (let i = 0; i < numBarriers; i++) {
+                const t = (i + 0.5) / numBarriers;
+                const bx = run.start.x + dx * t + normalX * barrierOffset;
+                const bz = run.start.z + dz * t + normalZ * barrierOffset;
+
+                const modelKey = (i % 2 === 0) ? 'barrierRed' : 'barrierWhite';
+                const barrier = this.cloneModel(modelKey, 12);
+                if (barrier) {
+                    barrier.position.set(bx, 0, bz);
+                    barrier.rotation.y = run.rotY;
+                    this.scene.add(barrier);
+                }
+            }
+        }
+
+        // === Start/Finish line ===
+        const startPos = track.getStartPosition();
+        // Start is on bottom straightaway heading west
+        // Road runs east-west, outer wall at higher z, inner wall at lower z
+
+        const flag1 = this.cloneModel('flagCheckers', 50);
+        if (flag1) {
+            flag1.position.set(startPos.x, 0, startPos.y + 60);
+            flag1.rotation.y = Math.PI;
+            this.scene.add(flag1);
+        }
+
+        const flag2 = this.cloneModel('flagCheckers', 50);
+        if (flag2) {
+            flag2.position.set(startPos.x, 0, startPos.y - 60);
+            flag2.rotation.y = 0;
+            this.scene.add(flag2);
+        }
+
+        // Small flanking flags
+        for (const [dx, dz] of [[-80, 40], [80, 40], [-80, -40], [80, -40]]) {
+            const sf = this.cloneModel('flagCheckersSmall', 30);
+            if (sf) {
+                sf.position.set(startPos.x + dx, 0, startPos.y + dz);
+                this.scene.add(sf);
+            }
+        }
+
+        // === Pylons at corners ===
+        const allCorners = [
+            { x: b.outerLeft, z: b.outerTop },
+            { x: b.outerRight, z: b.outerTop },
+            { x: b.outerLeft, z: b.outerBottom },
+            { x: b.outerRight, z: b.outerBottom },
+            { x: b.innerLeft, z: b.innerTop },
+            { x: b.innerRight, z: b.innerTop },
+            { x: b.innerLeft, z: b.innerBottom },
+            { x: b.innerRight, z: b.innerBottom },
+        ];
+
+        for (const corner of allCorners) {
+            for (let j = 0; j < 3; j++) {
+                const pylon = this.cloneModel('pylon', 15);
+                if (pylon) {
+                    // Spread pylons in a small cluster around the corner
+                    const seed = corner.x * 7 + corner.z * 13 + j * 31;
+                    const px = ((seed % 40) - 20);
+                    const pz = (((seed * 3) % 40) - 20);
+                    pylon.position.set(corner.x + px, 0, corner.z + pz);
+                    this.scene.add(pylon);
+                }
+            }
+        }
+
+        // === Banner towers at straightaway midpoints ===
+        const midpoints = [
+            { x: (b.outerLeft + b.outerRight) / 2, z: b.outerTop - 30, rotY: 0 },
+            { x: (b.outerLeft + b.outerRight) / 2, z: b.outerBottom + 30, rotY: Math.PI },
+            { x: b.outerLeft - 30, z: (b.outerTop + b.outerBottom) / 2, rotY: Math.PI / 2 },
+            { x: b.outerRight + 30, z: (b.outerTop + b.outerBottom) / 2, rotY: -Math.PI / 2 },
+        ];
+
+        midpoints.forEach((mp, i) => {
+            const key = (i % 2 === 0) ? 'bannerTowerGreen' : 'bannerTowerRed';
+            const tower = this.cloneModel(key, 70);
+            if (tower) {
+                tower.position.set(mp.x, 0, mp.z);
+                tower.rotation.y = mp.rotY;
+                this.scene.add(tower);
+            }
+        });
+
+        // === Billboards outside the track ===
+        const billboardPositions = [
+            { x: b.outerLeft - 80, z: b.outerTop + 300, rotY: Math.PI / 2 },
+            { x: b.outerRight + 80, z: b.outerBottom - 300, rotY: -Math.PI / 2 },
+            { x: b.outerLeft + 400, z: b.outerTop - 80, rotY: 0 },
+            { x: b.outerRight - 400, z: b.outerBottom + 80, rotY: Math.PI },
+        ];
+
+        billboardPositions.forEach((bp, i) => {
+            const key = (i % 2 === 0) ? 'billboard' : 'billboardLow';
+            const bb = this.cloneModel(key, 55);
+            if (bb) {
+                bb.position.set(bp.x, 0, bp.z);
+                bb.rotation.y = bp.rotY;
+                this.scene.add(bb);
+            }
+        });
+
+        // === Light posts along outer straightaways ===
+        const lightSpacing = 400;
+        for (const run of wallRuns) {
+            if (!run.label.startsWith('outer')) continue;
+            const dx = run.end.x - run.start.x;
+            const dz = run.end.z - run.start.z;
+            const runLength = Math.sqrt(dx * dx + dz * dz);
+            if (runLength < lightSpacing) continue;
+
+            const dirX = dx / runLength;
+            const dirZ = dz / runLength;
+            const numLights = Math.floor(runLength / lightSpacing);
+
+            for (let i = 0; i < numLights; i++) {
+                const t = (i + 0.5) / numLights;
+                const lx = run.start.x + dx * t;
+                const lz = run.start.z + dz * t;
+
+                const light = this.cloneModel('lightPostModern', 75);
+                if (light) {
+                    // Position just outside the wall
+                    const normalX = dirZ; // perpendicular, pointing outward from outer wall
+                    const normalZ = -dirX;
+                    light.position.set(lx + normalX * 30, 0, lz + normalZ * 30);
+                    light.rotation.y = run.rotY;
+                    this.scene.add(light);
+                }
+            }
+        }
     }
 
     buildFurniture(track) {

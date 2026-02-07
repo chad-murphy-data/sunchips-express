@@ -13,7 +13,8 @@
       "Bash(node:*)",
       "Bash(powershell:*)",
       "Bash(for dir in \"C:/Users/chadm/Desktop/car-racing/client/assets\"/*/)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "Bash(findstr:*)"
     ]
   }
 }
