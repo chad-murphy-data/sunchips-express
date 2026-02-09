@@ -49,7 +49,7 @@ export class DeliveryAnimator {
         this.loaded = false;
 
         // Character scale
-        this.CHARACTER_SCALE = 12;
+        this.CHARACTER_SCALE = 30;
 
         // Skin textures for player differentiation
         this.skinTextures = [null, null];

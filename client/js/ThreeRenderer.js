@@ -301,6 +301,10 @@ export class ThreeRenderer {
         // Delivery animation system
         this.deliveryAnimator = new DeliveryAnimator(this.scene);
 
+        // Camera wall-avoidance
+        this.cameraRaycaster = new THREE.Raycaster();
+        this.wallMeshes = []; // populated during buildTiledWalls
+
         // Configure renderer to fill container
         this.renderer.setSize(width, height);
         this.renderer.shadowMap.enabled = true;
@@ -447,6 +451,9 @@ export class ThreeRenderer {
     }
 
     async buildScene(track) {
+        // Store track reference for camera wall avoidance
+        this.track = track;
+
         // Load GLB assets first
         await this.loadAssets();
 
@@ -1739,8 +1746,45 @@ export class ThreeRenderer {
 
     updateCamera(gameCamera) {
         // Camera sits behind and above the cart
-        const camX = gameCamera.x - Math.cos(gameCamera.angle) * this.FOLLOW_DISTANCE;
-        const camZ = gameCamera.y - Math.sin(gameCamera.angle) * this.FOLLOW_DISTANCE;
+        let camX = gameCamera.x - Math.cos(gameCamera.angle) * this.FOLLOW_DISTANCE;
+        let camZ = gameCamera.y - Math.sin(gameCamera.angle) * this.FOLLOW_DISTANCE;
+
+        // Pull camera forward if it would be behind a wall
+        if (this.track) {
+            const ts = this.track.tileSize;
+            const tileX = Math.floor(camX / ts);
+            const tileZ = Math.floor(camZ / ts);
+
+            // Check if the camera tile is NOT a road tile
+            if (!this.track._isRoad(tileX, tileZ)) {
+                // Binary search along the ray from cart to desired camera position
+                // to find the furthest point that's still on road
+                const cartX = gameCamera.x;
+                const cartZ = gameCamera.y;
+                let lo = 0;  // t=0 is cart position (always road)
+                let hi = 1;  // t=1 is desired camera position (in wall)
+
+                for (let step = 0; step < 10; step++) {
+                    const midT = (lo + hi) / 2;
+                    const testX = cartX + (camX - cartX) * midT;
+                    const testZ = cartZ + (camZ - cartZ) * midT;
+                    const testTileX = Math.floor(testX / ts);
+                    const testTileZ = Math.floor(testZ / ts);
+
+                    if (this.track._isRoad(testTileX, testTileZ)) {
+                        lo = midT;  // still safe, try further out
+                    } else {
+                        hi = midT;  // in wall, pull back
+                    }
+                }
+                const bestT = lo;
+
+                // Pull camera to the best road position (with a small margin)
+                const safeT = Math.max(0, bestT - 0.05);
+                camX = cartX + (camX - cartX) * safeT;
+                camZ = cartZ + (camZ - cartZ) * safeT;
+            }
+        }
 
         this.camera.position.set(camX, this.CAMERA_HEIGHT, camZ);
 
