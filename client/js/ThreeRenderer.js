@@ -2,6 +2,8 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { DeliveryAnimator } from './DeliveryAnimator.js';
 
 // Shared materials palette for consistent look and better performance
 function buildMaterials() {
@@ -293,6 +295,11 @@ export class ThreeRenderer {
         // Loaded assets
         this.loadedModels = {};
         this.gltfLoader = new GLTFLoader();
+        this.fbxLoader = new FBXLoader();
+        this.textureLoader = new THREE.TextureLoader();
+
+        // Delivery animation system
+        this.deliveryAnimator = new DeliveryAnimator(this.scene);
 
         // Configure renderer to fill container
         this.renderer.setSize(width, height);
@@ -383,6 +390,9 @@ export class ThreeRenderer {
                 console.log(`Wall model ${key}: ${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`);
             }
         }
+
+        // Load animated characters for delivery sequence
+        await this.deliveryAnimator.loadCharacter(this.fbxLoader, this.textureLoader);
 
         console.log('All assets loaded');
     }
@@ -1927,6 +1937,11 @@ export class ThreeRenderer {
             if (Math.random() < 0.3) {
                 this.triggerSkidEffect(vehicle.x, vehicle.y, vehicle.heading);
             }
+        }
+
+        // Update delivery animation
+        if (this.deliveryAnimator.active) {
+            this.deliveryAnimator.update(dt);
         }
     }
 

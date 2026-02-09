@@ -53,7 +53,7 @@ class Game {
         this.networkRoleDisplay = document.getElementById('network-role-display');
 
         // Delivery state machine
-        this.gameState = 'driving'; // driving | approaching | delivering | swap_announce | countdown
+        this.gameState = 'driving'; // driving | approaching | delivering | walk_back | swap_announce | countdown
         this.deliveryProgress = 0;
         this.stateTimer = 0;
         this.currentStation = null;
@@ -425,6 +425,15 @@ class Game {
             this.updateDelivery(dt);
         }
 
+        // === Walk-back: wait for characters to return to cart ===
+        if (this.gameState === 'walk_back') {
+            const animator = this.threeRenderer.deliveryAnimator;
+            if (!animator.active) {
+                // Characters are back in the cart, proceed to swap announce
+                this.doSwapAnnounce();
+            }
+        }
+
         // === Timed state transitions ===
         if (this.gameState === 'swap_announce' || this.gameState === 'countdown') {
             this.updateStateTimer(dt);
@@ -509,6 +518,15 @@ class Game {
         this.deliveryPrompt.classList.add('hidden');
         this.deliveryBarContainer.classList.remove('hidden');
         this.deliveryBarFill.style.width = '0%';
+
+        // Start the character delivery animation
+        if (this.currentStation && this.threeRenderer.deliveryAnimator.loaded) {
+            this.threeRenderer.deliveryAnimator.startDelivery(
+                { x: this.vehicle.x, y: this.vehicle.y },
+                this.vehicle.heading,
+                { x: this.currentStation.x, y: this.currentStation.y }
+            );
+        }
     }
 
     updateDelivery(dt) {
@@ -531,6 +549,21 @@ class Game {
     }
 
     enterSwapAnnounce() {
+        // Signal to the animator that stocking is done
+        const animator = this.threeRenderer.deliveryAnimator;
+        if (animator.active) {
+            animator.onStockingComplete();
+            // Go to walk_back state — wait for characters to return to cart
+            this.gameState = 'walk_back';
+            this.deliveryBarContainer.classList.add('hidden');
+            return;
+        }
+
+        // If no animation is active, proceed immediately
+        this.doSwapAnnounce();
+    }
+
+    doSwapAnnounce() {
         this.gameState = 'swap_announce';
         this.stateTimer = 0;
         this.deliveryBarContainer.classList.add('hidden');
@@ -585,6 +618,11 @@ class Game {
         }
         this.currentStation = null;
         if (this.touchControls) this.touchControls.classList.remove('mash-active');
+
+        // Ensure delivery animation is cleaned up
+        if (this.threeRenderer.deliveryAnimator.active) {
+            this.threeRenderer.deliveryAnimator.abort();
+        }
     }
 
     checkLapCompletion() {
