@@ -1463,6 +1463,9 @@ export class ThreeRenderer {
         this.addChipBagsToCargo();
 
         this.scene.add(this.cartGroup);
+
+        // Attach animated characters to the cart as seated passengers
+        this.deliveryAnimator.attachToCart(this.cartGroup);
     }
 
     buildCartFromGLB() {
@@ -1983,10 +1986,8 @@ export class ThreeRenderer {
             }
         }
 
-        // Update delivery animation
-        if (this.deliveryAnimator.active) {
-            this.deliveryAnimator.update(dt);
-        }
+        // Update delivery animation (always tick — handles seated idle animation too)
+        this.deliveryAnimator.update(dt);
     }
 
     render() {

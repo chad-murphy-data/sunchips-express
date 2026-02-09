@@ -1,19 +1,9 @@
 // DeliveryAnimator.js - Manages animated characters during delivery sequence
-// Characters exit cart, walk to station, stock chips (punch), walk to other side, get back in
+// Characters sit in cart while driving, exit cart, walk to station,
+// stock chips (punch), walk to opposite side, get back in (role swap)
 
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-
-// Animation sequence phases
-const PHASE = {
-    IDLE: 'idle',
-    EXIT_CART: 'exit_cart',
-    WALK_TO_STATION: 'walk_to_station',
-    STOCKING: 'stocking',
-    WALK_TO_SWAP: 'walk_to_swap',
-    ENTER_CART: 'enter_cart',
-    DONE: 'done'
-};
 
 export class DeliveryAnimator {
     constructor(scene) {
@@ -22,13 +12,15 @@ export class DeliveryAnimator {
         // Character meshes and animation mixers
         this.characters = [null, null]; // [player1, player2]
         this.mixers = [null, null];
-        this.animations = {}; // { idle, walk, punch, interact } clip references
+        this.animations = {}; // { idle, walk, punch, racingIdle } clip references
         this.activeActions = [null, null];
 
-        // Animation state
-        this.phase = PHASE.IDLE;
-        this.phaseTimer = 0;
-        this.active = false;
+        // The cart group reference (set externally after cart is built)
+        this.cartGroup = null;
+
+        // Delivery animation state
+        this.active = false; // true when delivery walk sequence is running
+        this.stockingComplete = false;
 
         // Positions computed per-delivery
         this.cartPosition = new THREE.Vector3();
@@ -39,20 +31,25 @@ export class DeliveryAnimator {
         this.waypoints = [[], []]; // per character
         this.waypointIndex = [0, 0];
 
-        // Timing constants (seconds)
-        this.EXIT_DURATION = 0.8;
+        // Constants
         this.WALK_SPEED = 80; // units per second
-        this.STOCK_DURATION = 0; // set dynamically based on mashing
-        this.ENTER_DURATION = 0.8;
-
-        // Loaded state
-        this.loaded = false;
-
-        // Character scale
         this.CHARACTER_SCALE = 30;
+
+        // Seat positions in cart local space
+        // Cart faces -Z; left seat is -X, right seat is +X
+        // GLB cart: seat height ~45% of cart height, seat Z ~ forward area
+        this.seatPositions = [
+            new THREE.Vector3(-6, 11, 4),  // Player 1 - left seat (driver side)
+            new THREE.Vector3(6, 11, 4),   // Player 2 - right seat (passenger side)
+        ];
+        // Which seat each player is in (swaps after each delivery)
+        this.seatAssignment = [0, 1]; // player 0 in seat 0, player 1 in seat 1
 
         // Skin textures for player differentiation
         this.skinTextures = [null, null];
+
+        // Loaded state
+        this.loaded = false;
     }
 
     async loadCharacter(fbxLoader, textureLoader) {
@@ -61,18 +58,18 @@ export class DeliveryAnimator {
             const charModel = await this.loadFBX(fbxLoader, 'assets/kenney-animated/Models/characterMedium.fbx');
 
             // Load animation clips
-            const [idleClip, walkClip, punchClip, interactClip] = await Promise.all([
+            const [idleClip, walkClip, punchClip, racingIdleClip] = await Promise.all([
                 this.loadFBX(fbxLoader, 'assets/kenney-animated/Animations/idle.fbx'),
                 this.loadFBX(fbxLoader, 'assets/kenney-animated/Animations/walk.fbx'),
                 this.loadFBX(fbxLoader, 'assets/kenney-animated/Animations/punch.fbx'),
-                this.loadFBX(fbxLoader, 'assets/kenney-animated/Animations/interactStanding.fbx'),
+                this.loadFBX(fbxLoader, 'assets/kenney-animated/Animations/racingIdle.fbx'),
             ]);
 
             // Store animation clips
             if (idleClip.animations.length > 0) this.animations.idle = idleClip.animations[0];
             if (walkClip.animations.length > 0) this.animations.walk = walkClip.animations[0];
             if (punchClip.animations.length > 0) this.animations.punch = punchClip.animations[0];
-            if (interactClip.animations.length > 0) this.animations.interact = interactClip.animations[0];
+            if (racingIdleClip.animations.length > 0) this.animations.racingIdle = racingIdleClip.animations[0];
 
             // Load skin textures for the two players
             try {
@@ -116,8 +113,7 @@ export class DeliveryAnimator {
                     });
                 }
 
-                clone.visible = false;
-                this.scene.add(clone);
+                clone.visible = true;
                 this.characters[i] = clone;
 
                 // Create animation mixer for each character
@@ -129,6 +125,31 @@ export class DeliveryAnimator {
         } catch (error) {
             console.warn('DeliveryAnimator: Could not load animated characters:', error.message);
             this.loaded = false;
+        }
+    }
+
+    // Called after the cart group is built — attaches characters as children of the cart
+    attachToCart(cartGroup) {
+        if (!this.loaded) return;
+
+        this.cartGroup = cartGroup;
+
+        for (let i = 0; i < 2; i++) {
+            if (!this.characters[i]) continue;
+
+            // Add as child of cart group so they move/rotate with the cart
+            cartGroup.add(this.characters[i]);
+
+            // Position on their assigned seat
+            const seatIdx = this.seatAssignment[i];
+            const seat = this.seatPositions[seatIdx];
+            this.characters[i].position.copy(seat);
+
+            // Face forward in the cart (cart faces -Z in local space)
+            this.characters[i].rotation.y = Math.PI;
+
+            // Play seated animation
+            this.playAnimation(i, 'racingIdle');
         }
     }
 
@@ -171,6 +192,44 @@ export class DeliveryAnimator {
         this.activeActions[charIndex] = newAction;
     }
 
+    // Detach a character from cart group into world (scene) space
+    detachFromCart(charIndex) {
+        const char = this.characters[charIndex];
+        if (!char || !this.cartGroup) return;
+
+        // Get world position & rotation before detaching
+        const worldPos = new THREE.Vector3();
+        char.getWorldPosition(worldPos);
+        const worldQuat = new THREE.Quaternion();
+        char.getWorldQuaternion(worldQuat);
+
+        // Remove from cart, add to scene
+        this.cartGroup.remove(char);
+        this.scene.add(char);
+
+        // Restore world transform
+        char.position.copy(worldPos);
+        char.quaternion.copy(worldQuat);
+    }
+
+    // Re-attach a character from world space back into the cart group
+    reattachToCart(charIndex, seatIdx) {
+        const char = this.characters[charIndex];
+        if (!char || !this.cartGroup) return;
+
+        // Remove from scene, add to cart
+        this.scene.remove(char);
+        this.cartGroup.add(char);
+
+        // Position on the assigned seat
+        const seat = this.seatPositions[seatIdx];
+        char.position.copy(seat);
+        char.rotation.set(0, Math.PI, 0); // face forward
+
+        // Update seat assignment
+        this.seatAssignment[charIndex] = seatIdx;
+    }
+
     // Start the delivery animation sequence
     // cartPos: {x, y} game coords, cartHeading: radians, stationPos: {x, y}
     startDelivery(cartPos, cartHeading, stationPos) {
@@ -180,100 +239,83 @@ export class DeliveryAnimator {
         this.cartPosition.set(cartPos.x, 0, cartPos.y);
         this.cartHeading = cartHeading;
         this.stationPosition.set(stationPos.x, 0, stationPos.y);
-
-        // Compute exit positions (left and right side of cart)
-        // Cart's right vector (perpendicular to heading)
-        const rightX = -Math.sin(cartHeading);
-        const rightZ = Math.cos(cartHeading);
-        // Cart's forward vector
-        const fwdX = Math.cos(cartHeading);
-        const fwdZ = Math.sin(cartHeading);
-
-        // Side offset from cart center
-        const sideOffset = 20;
-        const exitOffset = 10; // How far to step away from cart
-
-        // Player 1 exits left side, Player 2 exits right side
-        const p1ExitSide = {
-            x: cartPos.x - rightX * sideOffset,
-            z: cartPos.y - rightZ * sideOffset
-        };
-        const p2ExitSide = {
-            x: cartPos.x + rightX * sideOffset,
-            z: cartPos.y + rightZ * sideOffset
-        };
-
-        // Step further away from cart
-        const p1ExitFinal = {
-            x: p1ExitSide.x - rightX * exitOffset,
-            z: p1ExitSide.z - rightZ * exitOffset
-        };
-        const p2ExitFinal = {
-            x: p2ExitSide.x + rightX * exitOffset,
-            z: p2ExitSide.z + rightZ * exitOffset
-        };
-
-        // Station approach points (slightly in front of station)
-        const toStation1 = this.normalizeXZ(
-            stationPos.x - p1ExitFinal.x,
-            stationPos.y - p1ExitFinal.z
-        );
-        const toStation2 = this.normalizeXZ(
-            stationPos.x - p2ExitFinal.x,
-            stationPos.y - p2ExitFinal.z
-        );
-
-        const stationApproach = 25; // Stop this far from station center
-        const p1StationPos = {
-            x: stationPos.x - toStation1.x * stationApproach - rightX * 8,
-            z: stationPos.y - toStation1.z * stationApproach - rightZ * 8
-        };
-        const p2StationPos = {
-            x: stationPos.x - toStation2.x * stationApproach + rightX * 8,
-            z: stationPos.y - toStation2.z * stationApproach + rightZ * 8
-        };
-
-        // After stocking, they swap sides to enter the cart
-        // Player 1 enters right side (was left), Player 2 enters left side (was right)
-        const p1EnterSide = {
-            x: cartPos.x + rightX * sideOffset,
-            z: cartPos.y + rightZ * sideOffset
-        };
-        const p2EnterSide = {
-            x: cartPos.x - rightX * sideOffset,
-            z: cartPos.y - rightZ * sideOffset
-        };
-
-        // Build waypoint sequences
-        // Each waypoint: { x, z, anim, duration (optional, for timed phases) }
-        this.waypoints[0] = [
-            { x: p1ExitSide.x, z: p1ExitSide.z, anim: 'walk' },
-            { x: p1ExitFinal.x, z: p1ExitFinal.z, anim: 'walk' },
-            { x: p1StationPos.x, z: p1StationPos.z, anim: 'walk' },
-            { x: p1StationPos.x, z: p1StationPos.z, anim: 'punch', hold: true }, // hold until stocking done
-            { x: p1EnterSide.x, z: p1EnterSide.z, anim: 'walk' },
-            { x: cartPos.x + rightX * 5, z: cartPos.y + rightZ * 5, anim: 'walk' }, // enter cart position
-        ];
-
-        this.waypoints[1] = [
-            { x: p2ExitSide.x, z: p2ExitSide.z, anim: 'walk' },
-            { x: p2ExitFinal.x, z: p2ExitFinal.z, anim: 'walk' },
-            { x: p2StationPos.x, z: p2StationPos.z, anim: 'walk' },
-            { x: p2StationPos.x, z: p2StationPos.z, anim: 'punch', hold: true }, // hold until stocking done
-            { x: p2EnterSide.x, z: p2EnterSide.z, anim: 'walk' },
-            { x: cartPos.x - rightX * 5, z: cartPos.y - rightZ * 5, anim: 'walk' }, // enter cart position
-        ];
-
-        this.waypointIndex = [0, 0];
-        this.phase = PHASE.EXIT_CART;
-        this.phaseTimer = 0;
         this.stockingComplete = false;
 
-        // Position characters at cart center initially, make visible
+        // Detach both characters from cart into world space
+        for (let i = 0; i < 2; i++) {
+            this.detachFromCart(i);
+        }
+
+        // Compute exit positions (left and right side of cart)
+        const rightX = -Math.sin(cartHeading);
+        const rightZ = Math.cos(cartHeading);
+
+        const sideOffset = 20;
+        const exitOffset = 10;
+
+        // Player in left seat (seat 0) exits left, player in right seat (seat 1) exits right
+        const exitSides = [];
+        for (let i = 0; i < 2; i++) {
+            const onLeft = this.seatAssignment[i] === 0;
+            const sign = onLeft ? -1 : 1;
+            exitSides.push({
+                x: cartPos.x + sign * rightX * sideOffset,
+                z: cartPos.y + sign * rightZ * sideOffset
+            });
+        }
+
+        const exitFinals = exitSides.map((side, i) => {
+            const onLeft = this.seatAssignment[i] === 0;
+            const sign = onLeft ? -1 : 1;
+            return {
+                x: side.x + sign * rightX * exitOffset,
+                z: side.z + sign * rightZ * exitOffset
+            };
+        });
+
+        // Station approach points
+        const stationApproach = 25;
+        const stationPositions = exitFinals.map((ef, i) => {
+            const dir = this.normalizeXZ(stationPos.x - ef.x, stationPos.y - ef.z);
+            const lateralSign = (i === 0) ? -1 : 1;
+            return {
+                x: stationPos.x - dir.x * stationApproach + lateralSign * rightX * 8,
+                z: stationPos.y - dir.z * stationApproach + lateralSign * rightZ * 8
+            };
+        });
+
+        // After stocking, they swap sides!
+        // Player who was in seat 0 goes to seat 1's side, and vice versa
+        const enterSides = [];
+        for (let i = 0; i < 2; i++) {
+            const newSeat = this.seatAssignment[i] === 0 ? 1 : 0; // SWAP
+            const sign = newSeat === 0 ? -1 : 1;
+            enterSides.push({
+                x: cartPos.x + sign * rightX * sideOffset,
+                z: cartPos.y + sign * rightZ * sideOffset,
+                newSeat: newSeat
+            });
+        }
+
+        // Build waypoint sequences
+        for (let i = 0; i < 2; i++) {
+            this.waypoints[i] = [
+                { x: exitSides[i].x, z: exitSides[i].z, anim: 'walk' },
+                { x: exitFinals[i].x, z: exitFinals[i].z, anim: 'walk' },
+                { x: stationPositions[i].x, z: stationPositions[i].z, anim: 'walk' },
+                { x: stationPositions[i].x, z: stationPositions[i].z, anim: 'punch', hold: true },
+                { x: enterSides[i].x, z: enterSides[i].z, anim: 'walk' },
+                { x: cartPos.x + (enterSides[i].newSeat === 0 ? -1 : 1) * rightX * 5,
+                  z: cartPos.y + (enterSides[i].newSeat === 0 ? -1 : 1) * rightZ * 5,
+                  anim: 'walk', enterSeat: enterSides[i].newSeat },
+            ];
+        }
+
+        this.waypointIndex = [0, 0];
+
+        // Start walk animation
         for (let i = 0; i < 2; i++) {
             if (this.characters[i]) {
-                this.characters[i].position.set(cartPos.x, 0, cartPos.y);
-                this.characters[i].visible = true;
                 this.playAnimation(i, 'walk');
             }
         }
@@ -285,55 +327,49 @@ export class DeliveryAnimator {
         return { x: x / len, z: z / len };
     }
 
-    // Called when delivery progress hits 100% - characters should finish stocking
+    // Called when delivery progress hits 100%
     onStockingComplete() {
         this.stockingComplete = true;
     }
 
-    // Update the animation each frame
-    // Returns true if the full sequence is still running
+    // Update the animation each frame — always call this (handles seated animation too)
     update(dt) {
-        if (!this.active || !this.loaded) return false;
+        if (!this.loaded) return false;
 
-        // Update animation mixers
+        // Always update animation mixers (for seated idle animation)
         for (let i = 0; i < 2; i++) {
             if (this.mixers[i]) {
                 this.mixers[i].update(dt);
             }
         }
 
+        // If no delivery is active, nothing else to do
+        if (!this.active) return false;
+
         // Move characters toward their current waypoint
-        let allDone = true;
         for (let i = 0; i < 2; i++) {
             if (!this.characters[i]) continue;
 
             const wp = this.waypoints[i];
             const idx = this.waypointIndex[i];
 
-            if (idx >= wp.length) {
-                // This character is done
-                continue;
-            }
+            if (idx >= wp.length) continue; // done
 
-            allDone = false;
             const target = wp[idx];
             const char = this.characters[i];
             const pos = char.position;
 
-            // If this is a hold waypoint (stocking), wait until stocking is complete
+            // Hold waypoint (stocking) — wait until complete
             if (target.hold && !this.stockingComplete) {
-                // Keep playing the stocking animation, don't advance
                 if (this.activeActions[i] === null ||
                     !this.animations.punch ||
                     this.activeActions[i]._clip !== this.animations.punch) {
                     this.playAnimation(i, 'punch', true);
                 }
-                // Face the station
                 this.faceToward(char, this.stationPosition.x, this.stationPosition.z);
                 continue;
             }
 
-            // If hold waypoint and stocking is done, advance
             if (target.hold && this.stockingComplete) {
                 this.waypointIndex[i]++;
                 if (this.waypointIndex[i] < wp.length) {
@@ -342,13 +378,12 @@ export class DeliveryAnimator {
                 continue;
             }
 
-            // Move toward target position
+            // Move toward target
             const dx = target.x - pos.x;
             const dz = target.z - pos.z;
             const dist = Math.sqrt(dx * dx + dz * dz);
 
             if (dist < 3) {
-                // Reached waypoint, advance
                 pos.x = target.x;
                 pos.z = target.z;
                 this.waypointIndex[i]++;
@@ -358,17 +393,14 @@ export class DeliveryAnimator {
                     this.playAnimation(i, nextWp.anim || 'walk', nextWp.hold || nextWp.anim === 'punch');
                 }
             } else {
-                // Walk toward target
                 const moveSpeed = this.WALK_SPEED * dt;
                 const moveX = (dx / dist) * Math.min(moveSpeed, dist);
                 const moveZ = (dz / dist) * Math.min(moveSpeed, dist);
                 pos.x += moveX;
                 pos.z += moveZ;
 
-                // Face movement direction
                 this.faceToward(char, target.x, target.z);
 
-                // Make sure walk animation is playing
                 if (!this.activeActions[i] ||
                     !this.animations.walk ||
                     (this.activeActions[i]._clip !== this.animations.walk && target.anim === 'walk')) {
@@ -382,7 +414,7 @@ export class DeliveryAnimator {
         const char1Done = this.waypointIndex[1] >= this.waypoints[1].length;
 
         if (char0Done && char1Done) {
-            this.finish();
+            this.finishDelivery();
             return false;
         }
 
@@ -397,24 +429,38 @@ export class DeliveryAnimator {
         }
     }
 
-    // End the animation, hide characters
-    finish() {
+    // Finish delivery: re-attach characters to cart at swapped seats
+    finishDelivery() {
         this.active = false;
-        this.phase = PHASE.DONE;
 
         for (let i = 0; i < 2; i++) {
-            if (this.characters[i]) {
-                this.characters[i].visible = false;
-            }
-            if (this.activeActions[i]) {
-                this.activeActions[i].stop();
-                this.activeActions[i] = null;
-            }
+            if (!this.characters[i]) continue;
+
+            // Determine the new seat from the last waypoint
+            const lastWp = this.waypoints[i][this.waypoints[i].length - 1];
+            const newSeat = lastWp && lastWp.enterSeat !== undefined ? lastWp.enterSeat : this.seatAssignment[i];
+
+            // Re-attach to cart at the new (swapped) seat
+            this.reattachToCart(i, newSeat);
+
+            // Play seated animation
+            this.playAnimation(i, 'racingIdle');
         }
     }
 
-    // Abort the animation early (e.g., if player drives away)
+    // Abort the animation early
     abort() {
-        this.finish();
+        this.active = false;
+
+        for (let i = 0; i < 2; i++) {
+            if (!this.characters[i]) continue;
+
+            // If currently in world space, re-attach to cart
+            if (this.characters[i].parent === this.scene) {
+                this.reattachToCart(i, this.seatAssignment[i]);
+            }
+
+            this.playAnimation(i, 'racingIdle');
+        }
     }
 }
