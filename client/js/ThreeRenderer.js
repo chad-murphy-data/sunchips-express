@@ -958,13 +958,13 @@ export class ThreeRenderer {
         this.stationVMs = []; // Vending machine groups for reference
 
         // Grid layout for chip bags on the vending machine:
-        // 5 columns x 2 rows = 10 bags, revealed progressively at 10% each
-        const BAGS_PER_STATION = 10;
-        const COLS = 5;
-        const ROWS = 2;
-        const BAG_SPACING_X = 5;   // horizontal spacing between bags
-        const BAG_SPACING_Y = 7;   // vertical spacing between rows
-        const BAG_START_Y = 22;    // height of bottom row on vending machine
+        // 6 columns x 5 rows = 30 bags in grid, plus overflow bags on top/sides
+        // Revealed progressively — overly stuffed look!
+        const COLS = 6;
+        const ROWS = 5;
+        const BAG_SPACING_X = 4;   // tight horizontal spacing
+        const BAG_SPACING_Y = 5.5; // tight vertical spacing
+        const BAG_START_Y = 12;    // start low to fill the whole face
         const BAG_FRONT_Z = 12;    // how far in front of the vending machine
 
         for (let s = 0; s < track.snackStations.length; s++) {
@@ -989,41 +989,103 @@ export class ThreeRenderer {
             const rightX = Math.cos(vmRotY);
             const rightZ = -Math.sin(vmRotY);
 
+            // Helper to create a bag pair (front + back of vending machine)
+            const makeBagPair = (lateralOffset, heightOffset, bagScale = 0.8) => {
+                const frontBag = this.createSunChipsBag(bagScale);
+                frontBag.visible = false;
+                frontBag.position.set(
+                    station.x + fwdX * BAG_FRONT_Z + rightX * lateralOffset,
+                    heightOffset,
+                    station.y + fwdZ * BAG_FRONT_Z + rightZ * lateralOffset
+                );
+                frontBag.rotation.y = vmRotY;
+                frontBag.rotation.x = (Math.random() - 0.5) * 0.2;
+                frontBag.rotation.z = (Math.random() - 0.5) * 0.15;
+                this.scene.add(frontBag);
+
+                const backBag = this.createSunChipsBag(bagScale);
+                backBag.visible = false;
+                backBag.position.set(
+                    station.x - fwdX * BAG_FRONT_Z + rightX * lateralOffset,
+                    heightOffset,
+                    station.y - fwdZ * BAG_FRONT_Z + rightZ * lateralOffset
+                );
+                backBag.rotation.y = vmRotY + Math.PI;
+                backBag.rotation.x = (Math.random() - 0.5) * 0.2;
+                backBag.rotation.z = (Math.random() - 0.5) * 0.15;
+                this.scene.add(backBag);
+
+                bags.push({ front: frontBag, back: backBag });
+            };
+
+            // Main grid: 6 cols × 5 rows = 30 bags filling the full face
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
                     const lateralOffset = (col - (COLS - 1) / 2) * BAG_SPACING_X;
                     const heightOffset = BAG_START_Y + row * BAG_SPACING_Y;
-
-                    // Front side bag
-                    const frontBag = this.createSunChipsBag(0.8);
-                    frontBag.visible = false;
-                    frontBag.position.set(
-                        station.x + fwdX * BAG_FRONT_Z + rightX * lateralOffset,
-                        heightOffset,
-                        station.y + fwdZ * BAG_FRONT_Z + rightZ * lateralOffset
-                    );
-                    frontBag.rotation.y = vmRotY;
-                    frontBag.rotation.x = (Math.random() - 0.5) * 0.15;
-                    frontBag.rotation.z = (Math.random() - 0.5) * 0.1;
-                    this.scene.add(frontBag);
-
-                    // Back side bag (mirrored on opposite face)
-                    const backBag = this.createSunChipsBag(0.8);
-                    backBag.visible = false;
-                    backBag.position.set(
-                        station.x - fwdX * BAG_FRONT_Z + rightX * lateralOffset,
-                        heightOffset,
-                        station.y - fwdZ * BAG_FRONT_Z + rightZ * lateralOffset
-                    );
-                    backBag.rotation.y = vmRotY + Math.PI; // face the other way
-                    backBag.rotation.x = (Math.random() - 0.5) * 0.15;
-                    backBag.rotation.z = (Math.random() - 0.5) * 0.1;
-                    this.scene.add(backBag);
-
-                    // Store as a pair so they appear together
-                    bags.push({ front: frontBag, back: backBag });
+                    makeBagPair(lateralOffset, heightOffset, 0.8);
                 }
             }
+
+            // Overflow bags on TOP of the machine (stacked up, spilling over)
+            const topY = BAG_START_Y + ROWS * BAG_SPACING_Y;
+            for (let i = 0; i < 5; i++) {
+                const lat = (Math.random() - 0.5) * (COLS * BAG_SPACING_X);
+                const h = topY + Math.random() * 8;
+                makeBagPair(lat, h, 0.7 + Math.random() * 0.25);
+            }
+
+            // Extra bags jutting out further in front / back (depth overflow)
+            for (let i = 0; i < 4; i++) {
+                const lat = (Math.random() - 0.5) * (COLS * BAG_SPACING_X * 0.8);
+                const h = BAG_START_Y + Math.random() * (ROWS * BAG_SPACING_Y);
+                const extraFront = this.createSunChipsBag(0.7 + Math.random() * 0.2);
+                extraFront.visible = false;
+                extraFront.position.set(
+                    station.x + fwdX * (BAG_FRONT_Z + 3 + Math.random() * 3) + rightX * lat,
+                    h,
+                    station.y + fwdZ * (BAG_FRONT_Z + 3 + Math.random() * 3) + rightZ * lat
+                );
+                extraFront.rotation.y = vmRotY + (Math.random() - 0.5) * 0.4;
+                extraFront.rotation.x = (Math.random() - 0.5) * 0.3;
+                extraFront.rotation.z = (Math.random() - 0.5) * 0.3;
+                this.scene.add(extraFront);
+
+                const extraBack = this.createSunChipsBag(0.7 + Math.random() * 0.2);
+                extraBack.visible = false;
+                extraBack.position.set(
+                    station.x - fwdX * (BAG_FRONT_Z + 3 + Math.random() * 3) + rightX * lat,
+                    h,
+                    station.y - fwdZ * (BAG_FRONT_Z + 3 + Math.random() * 3) + rightZ * lat
+                );
+                extraBack.rotation.y = vmRotY + Math.PI + (Math.random() - 0.5) * 0.4;
+                extraBack.rotation.x = (Math.random() - 0.5) * 0.3;
+                extraBack.rotation.z = (Math.random() - 0.5) * 0.3;
+                this.scene.add(extraBack);
+
+                bags.push({ front: extraFront, back: extraBack });
+            }
+
+            // Bags fallen on the FLOOR around the base (overly full, spilling out!)
+            for (let i = 0; i < 4; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 10 + Math.random() * 8;
+                const floorFront = this.createSunChipsBag(0.65 + Math.random() * 0.2);
+                floorFront.visible = false;
+                floorFront.position.set(
+                    station.x + Math.cos(angle) * dist,
+                    1 + Math.random() * 3, // on or near the floor
+                    station.y + Math.sin(angle) * dist
+                );
+                floorFront.rotation.x = Math.PI * 0.4 + (Math.random() - 0.5) * 0.3; // lying mostly flat
+                floorFront.rotation.y = Math.random() * Math.PI * 2;
+                floorFront.rotation.z = (Math.random() - 0.5) * 0.5;
+                this.scene.add(floorFront);
+
+                // Floor bags only have a front (no mirrored back needed)
+                bags.push({ front: floorFront, back: floorFront }); // same ref, fine for visibility toggle
+            }
+
             this.stationBags.push(bags);
 
             // Yellow ring on the floor (delivery zone indicator)
