@@ -958,14 +958,15 @@ export class ThreeRenderer {
         this.stationVMs = []; // Vending machine groups for reference
 
         // Grid layout for chip bags on the vending machine:
-        // 6 columns x 5 rows = 30 bags in grid, plus overflow bags on top/sides
+        // 7 columns x 6 rows = 42 bags in grid, plus second layer + overflow
         // Revealed progressively — overly stuffed look!
-        const COLS = 6;
-        const ROWS = 5;
-        const BAG_SPACING_X = 4;   // tight horizontal spacing
-        const BAG_SPACING_Y = 5.5; // tight vertical spacing
-        const BAG_START_Y = 12;    // start low to fill the whole face
-        const BAG_FRONT_Z = 12;    // how far in front of the vending machine
+        const COLS = 7;
+        const ROWS = 6;
+        const BAG_SPACING_X = 3.5; // very tight horizontal spacing (bags nearly touching)
+        const BAG_SPACING_Y = 5;   // tight vertical spacing
+        const BAG_START_Y = 10;    // start low to fill the whole face
+        const BAG_FRONT_Z = 11;    // how far in front of the vending machine
+        const BAG_SCALE = 1.0;     // bigger bags to fill more area
 
         for (let s = 0; s < track.snackStations.length; s++) {
             const station = track.snackStations[s];
@@ -1018,21 +1019,57 @@ export class ThreeRenderer {
                 bags.push({ front: frontBag, back: backBag });
             };
 
-            // Main grid: 6 cols × 5 rows = 30 bags filling the full face
+            // Main grid: 7 cols × 6 rows = 42 bags filling the full face
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
                     const lateralOffset = (col - (COLS - 1) / 2) * BAG_SPACING_X;
                     const heightOffset = BAG_START_Y + row * BAG_SPACING_Y;
-                    makeBagPair(lateralOffset, heightOffset, 0.8);
+                    makeBagPair(lateralOffset, heightOffset, BAG_SCALE);
+                }
+            }
+
+            // Second staggered layer slightly in front — fills gaps between first grid
+            const COLS2 = COLS - 1;
+            const ROWS2 = ROWS - 1;
+            for (let row = 0; row < ROWS2; row++) {
+                for (let col = 0; col < COLS2; col++) {
+                    const lateralOffset = (col - (COLS2 - 1) / 2) * BAG_SPACING_X;
+                    const heightOffset = BAG_START_Y + (row + 0.5) * BAG_SPACING_Y;
+                    // These bags sit slightly further out, closing the gaps
+                    const frontBag = this.createSunChipsBag(BAG_SCALE * 0.85);
+                    frontBag.visible = false;
+                    frontBag.position.set(
+                        station.x + fwdX * (BAG_FRONT_Z + 2.5) + rightX * lateralOffset,
+                        heightOffset,
+                        station.y + fwdZ * (BAG_FRONT_Z + 2.5) + rightZ * lateralOffset
+                    );
+                    frontBag.rotation.y = vmRotY + (Math.random() - 0.5) * 0.2;
+                    frontBag.rotation.x = (Math.random() - 0.5) * 0.2;
+                    frontBag.rotation.z = (Math.random() - 0.5) * 0.15;
+                    this.scene.add(frontBag);
+
+                    const backBag = this.createSunChipsBag(BAG_SCALE * 0.85);
+                    backBag.visible = false;
+                    backBag.position.set(
+                        station.x - fwdX * (BAG_FRONT_Z + 2.5) + rightX * lateralOffset,
+                        heightOffset,
+                        station.y - fwdZ * (BAG_FRONT_Z + 2.5) + rightZ * lateralOffset
+                    );
+                    backBag.rotation.y = vmRotY + Math.PI + (Math.random() - 0.5) * 0.2;
+                    backBag.rotation.x = (Math.random() - 0.5) * 0.2;
+                    backBag.rotation.z = (Math.random() - 0.5) * 0.15;
+                    this.scene.add(backBag);
+
+                    bags.push({ front: frontBag, back: backBag });
                 }
             }
 
             // Overflow bags on TOP of the machine (stacked up, spilling over)
             const topY = BAG_START_Y + ROWS * BAG_SPACING_Y;
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 6; i++) {
                 const lat = (Math.random() - 0.5) * (COLS * BAG_SPACING_X);
-                const h = topY + Math.random() * 8;
-                makeBagPair(lat, h, 0.7 + Math.random() * 0.25);
+                const h = topY + Math.random() * 10;
+                makeBagPair(lat, h, 0.8 + Math.random() * 0.3);
             }
 
             // Extra bags jutting out further in front / back (depth overflow)
