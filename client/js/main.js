@@ -57,6 +57,7 @@ class Game {
         this.deliveryProgress = 0;
         this.stateTimer = 0;
         this.currentStation = null;
+        this.currentStationIndex = -1;
 
         // Delivery tuning
         this.FILL_PER_MASH = 3;
@@ -464,7 +465,8 @@ class Game {
 
         if (this.gameState === 'driving') {
             // Look for a station to approach
-            for (const station of this.track.snackStations) {
+            for (let si = 0; si < this.track.snackStations.length; si++) {
+                const station = this.track.snackStations[si];
                 if (station.delivered) continue;
 
                 const dist = this.distToStation(station);
@@ -473,6 +475,7 @@ class Game {
                 if (dist < station.radius && speed < 15) {
                     this.gameState = 'approaching';
                     this.currentStation = station;
+                    this.currentStationIndex = si;
                     this.deliveryPrompt.classList.remove('hidden');
                     if (this.touchControls) this.touchControls.classList.add('mash-active');
                     break;
@@ -484,9 +487,13 @@ class Game {
             const speed = Math.abs(this.vehicle.speed);
 
             if (dist > this.currentStation.radius || speed > 30) {
-                // Drove away
+                // Drove away — reset bag fill if any progress was made
+                if (this.currentStationIndex >= 0) {
+                    this.threeRenderer.resetStationFill(this.currentStationIndex);
+                }
                 this.gameState = 'driving';
                 this.currentStation = null;
+                this.currentStationIndex = -1;
                 this.deliveryPrompt.classList.add('hidden');
                 if (this.touchControls) this.touchControls.classList.remove('mash-active');
             } else {
@@ -542,6 +549,11 @@ class Game {
 
         this.deliveryProgress = Math.max(0, Math.min(100, this.deliveryProgress));
         this.deliveryBarFill.style.width = this.deliveryProgress + '%';
+
+        // Update chip bag fill on the vending machine
+        if (this.currentStationIndex >= 0) {
+            this.threeRenderer.updateStationFill(this.currentStationIndex, this.deliveryProgress);
+        }
 
         if (this.deliveryProgress >= 100) {
             this.enterSwapAnnounce();
@@ -617,6 +629,7 @@ class Game {
             this.currentStation.delivered = true;
         }
         this.currentStation = null;
+        this.currentStationIndex = -1;
         if (this.touchControls) this.touchControls.classList.remove('mash-active');
 
         // Ensure delivery animation is cleaned up
@@ -653,8 +666,9 @@ class Game {
         // Reset stations for next lap after a delay
         setTimeout(() => {
             this.lapComplete.classList.add('hidden');
-            for (const station of this.track.snackStations) {
-                station.delivered = false;
+            for (let si = 0; si < this.track.snackStations.length; si++) {
+                this.track.snackStations[si].delivered = false;
+                this.threeRenderer.resetStationFill(si);
             }
             this.hasLeftStartZone = false;
             this.ui.startTimer();

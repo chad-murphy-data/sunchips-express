@@ -954,8 +954,22 @@ export class ThreeRenderer {
         if (!track.snackStations) return;
 
         this.stationRings = [];
+        this.stationBags = []; // Array of arrays: chip bags per station for fill animation
+        this.stationVMs = []; // Vending machine groups for reference
 
-        for (const station of track.snackStations) {
+        // Grid layout for chip bags on the vending machine:
+        // 5 columns x 2 rows = 10 bags, revealed progressively at 10% each
+        const BAGS_PER_STATION = 10;
+        const COLS = 5;
+        const ROWS = 2;
+        const BAG_SPACING_X = 5;   // horizontal spacing between bags
+        const BAG_SPACING_Y = 7;   // vertical spacing between rows
+        const BAG_START_Y = 22;    // height of bottom row on vending machine
+        const BAG_FRONT_Z = 12;    // how far in front of the vending machine
+
+        for (let s = 0; s < track.snackStations.length; s++) {
+            const station = track.snackStations[s];
+
             // Vending machine model
             const vm = this.cloneModel('vendingMachine', 45);
             if (vm) {
@@ -963,6 +977,42 @@ export class ThreeRenderer {
                 vm.rotation.y = Math.PI / 2;
                 this.scene.add(vm);
             }
+            this.stationVMs.push(vm);
+
+            // Create chip bags for this station (initially invisible)
+            const bags = [];
+            const vmRotY = Math.PI / 2; // same rotation as vending machine
+            const fwdX = Math.sin(vmRotY);  // forward direction of the VM front face
+            const fwdZ = Math.cos(vmRotY);
+            const rightX = Math.cos(vmRotY);
+            const rightZ = -Math.sin(vmRotY);
+
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const bag = this.createSunChipsBag(0.8);
+                    bag.visible = false;
+
+                    // Position relative to vending machine center
+                    const lateralOffset = (col - (COLS - 1) / 2) * BAG_SPACING_X;
+                    const heightOffset = BAG_START_Y + row * BAG_SPACING_Y;
+                    const frontOffset = BAG_FRONT_Z;
+
+                    bag.position.set(
+                        station.x + fwdX * frontOffset + rightX * lateralOffset,
+                        heightOffset,
+                        station.y + fwdZ * frontOffset + rightZ * lateralOffset
+                    );
+                    bag.rotation.y = vmRotY;
+
+                    // Add a slight random tilt for natural look
+                    bag.rotation.x = (Math.random() - 0.5) * 0.15;
+                    bag.rotation.z = (Math.random() - 0.5) * 0.1;
+
+                    this.scene.add(bag);
+                    bags.push(bag);
+                }
+            }
+            this.stationBags.push(bags);
 
             // Yellow ring on the floor (delivery zone indicator)
             const ringGeo = new THREE.RingGeometry(station.radius * 0.7, station.radius, 32);
@@ -977,6 +1027,38 @@ export class ThreeRenderer {
             ring.position.set(station.x, 0.5, station.y); // Just above floor
             this.scene.add(ring);
             this.stationRings.push(ring);
+        }
+    }
+
+    // Update chip bag fill level on a station (0-100 progress)
+    // stationIndex: which station, progress: 0-100
+    updateStationFill(stationIndex, progress) {
+        if (!this.stationBags || stationIndex < 0 || stationIndex >= this.stationBags.length) return;
+
+        const bags = this.stationBags[stationIndex];
+        const totalBags = bags.length;
+
+        // Each bag appears at (index+1) * (100/totalBags) percent
+        // e.g., bag 0 at 10%, bag 1 at 20%, ..., bag 9 at 100%
+        for (let i = 0; i < totalBags; i++) {
+            const threshold = ((i + 1) / totalBags) * 100;
+            const shouldShow = progress >= threshold;
+
+            if (shouldShow && !bags[i].visible) {
+                bags[i].visible = true;
+                // Pop-in scale animation: start small, we'll animate to full in update
+                bags[i].userData.popTimer = 0.2; // seconds of pop animation remaining
+                bags[i].userData.baseScale = { x: bags[i].scale.x, y: bags[i].scale.y, z: bags[i].scale.z };
+                bags[i].scale.set(0.01, 0.01, 0.01);
+            }
+        }
+    }
+
+    // Reset all bags on a station to invisible (for new lap)
+    resetStationFill(stationIndex) {
+        if (!this.stationBags || stationIndex < 0 || stationIndex >= this.stationBags.length) return;
+        for (const bag of this.stationBags[stationIndex]) {
+            bag.visible = false;
         }
     }
 
@@ -1976,6 +2058,22 @@ export class ThreeRenderer {
             const time = performance.now() / 1000;
             for (const ring of this.stationRings) {
                 ring.material.opacity = 0.25 + 0.15 * Math.sin(time * 2);
+            }
+        }
+
+        // Animate chip bag pop-in on stations
+        if (this.stationBags) {
+            for (const bags of this.stationBags) {
+                for (const bag of bags) {
+                    if (bag.visible && bag.userData.popTimer > 0) {
+                        bag.userData.popTimer -= dt;
+                        const t = 1 - Math.max(0, bag.userData.popTimer) / 0.2; // 0→1
+                        // Elastic ease-out for a satisfying pop
+                        const ease = t < 1 ? 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.5) : 1;
+                        const bs = bag.userData.baseScale;
+                        bag.scale.set(bs.x * ease, bs.y * ease, bs.z * ease);
+                    }
+                }
             }
         }
 
