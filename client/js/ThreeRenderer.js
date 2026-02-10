@@ -979,7 +979,9 @@ export class ThreeRenderer {
             }
             this.stationVMs.push(vm);
 
-            // Create chip bags for this station (initially invisible)
+            // Create chip bags on BOTH sides of the vending machine (initially invisible)
+            // bags array stores pairs: [front0, back0, front1, back1, ...]
+            // so showing bag index i also shows its paired twin
             const bags = [];
             const vmRotY = Math.PI / 2; // same rotation as vending machine
             const fwdX = Math.sin(vmRotY);  // forward direction of the VM front face
@@ -989,27 +991,37 @@ export class ThreeRenderer {
 
             for (let row = 0; row < ROWS; row++) {
                 for (let col = 0; col < COLS; col++) {
-                    const bag = this.createSunChipsBag(0.8);
-                    bag.visible = false;
-
-                    // Position relative to vending machine center
                     const lateralOffset = (col - (COLS - 1) / 2) * BAG_SPACING_X;
                     const heightOffset = BAG_START_Y + row * BAG_SPACING_Y;
-                    const frontOffset = BAG_FRONT_Z;
 
-                    bag.position.set(
-                        station.x + fwdX * frontOffset + rightX * lateralOffset,
+                    // Front side bag
+                    const frontBag = this.createSunChipsBag(0.8);
+                    frontBag.visible = false;
+                    frontBag.position.set(
+                        station.x + fwdX * BAG_FRONT_Z + rightX * lateralOffset,
                         heightOffset,
-                        station.y + fwdZ * frontOffset + rightZ * lateralOffset
+                        station.y + fwdZ * BAG_FRONT_Z + rightZ * lateralOffset
                     );
-                    bag.rotation.y = vmRotY;
+                    frontBag.rotation.y = vmRotY;
+                    frontBag.rotation.x = (Math.random() - 0.5) * 0.15;
+                    frontBag.rotation.z = (Math.random() - 0.5) * 0.1;
+                    this.scene.add(frontBag);
 
-                    // Add a slight random tilt for natural look
-                    bag.rotation.x = (Math.random() - 0.5) * 0.15;
-                    bag.rotation.z = (Math.random() - 0.5) * 0.1;
+                    // Back side bag (mirrored on opposite face)
+                    const backBag = this.createSunChipsBag(0.8);
+                    backBag.visible = false;
+                    backBag.position.set(
+                        station.x - fwdX * BAG_FRONT_Z + rightX * lateralOffset,
+                        heightOffset,
+                        station.y - fwdZ * BAG_FRONT_Z + rightZ * lateralOffset
+                    );
+                    backBag.rotation.y = vmRotY + Math.PI; // face the other way
+                    backBag.rotation.x = (Math.random() - 0.5) * 0.15;
+                    backBag.rotation.z = (Math.random() - 0.5) * 0.1;
+                    this.scene.add(backBag);
 
-                    this.scene.add(bag);
-                    bags.push(bag);
+                    // Store as a pair so they appear together
+                    bags.push({ front: frontBag, back: backBag });
                 }
             }
             this.stationBags.push(bags);
@@ -1038,18 +1050,20 @@ export class ThreeRenderer {
         const bags = this.stationBags[stationIndex];
         const totalBags = bags.length;
 
-        // Each bag appears at (index+1) * (100/totalBags) percent
-        // e.g., bag 0 at 10%, bag 1 at 20%, ..., bag 9 at 100%
+        // Each bag pair appears at (index+1) * (100/totalBags) percent
         for (let i = 0; i < totalBags; i++) {
             const threshold = ((i + 1) / totalBags) * 100;
             const shouldShow = progress >= threshold;
 
-            if (shouldShow && !bags[i].visible) {
-                bags[i].visible = true;
-                // Pop-in scale animation: start small, we'll animate to full in update
-                bags[i].userData.popTimer = 0.2; // seconds of pop animation remaining
-                bags[i].userData.baseScale = { x: bags[i].scale.x, y: bags[i].scale.y, z: bags[i].scale.z };
-                bags[i].scale.set(0.01, 0.01, 0.01);
+            const pair = bags[i];
+            if (shouldShow && !pair.front.visible) {
+                // Show both front and back bag simultaneously
+                for (const bag of [pair.front, pair.back]) {
+                    bag.visible = true;
+                    bag.userData.popTimer = 0.2;
+                    bag.userData.baseScale = { x: bag.scale.x, y: bag.scale.y, z: bag.scale.z };
+                    bag.scale.set(0.01, 0.01, 0.01);
+                }
             }
         }
     }
@@ -1057,8 +1071,9 @@ export class ThreeRenderer {
     // Reset all bags on a station to invisible (for new lap)
     resetStationFill(stationIndex) {
         if (!this.stationBags || stationIndex < 0 || stationIndex >= this.stationBags.length) return;
-        for (const bag of this.stationBags[stationIndex]) {
-            bag.visible = false;
+        for (const pair of this.stationBags[stationIndex]) {
+            pair.front.visible = false;
+            pair.back.visible = false;
         }
     }
 
@@ -2064,14 +2079,16 @@ export class ThreeRenderer {
         // Animate chip bag pop-in on stations
         if (this.stationBags) {
             for (const bags of this.stationBags) {
-                for (const bag of bags) {
-                    if (bag.visible && bag.userData.popTimer > 0) {
-                        bag.userData.popTimer -= dt;
-                        const t = 1 - Math.max(0, bag.userData.popTimer) / 0.2; // 0→1
-                        // Elastic ease-out for a satisfying pop
-                        const ease = t < 1 ? 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.5) : 1;
-                        const bs = bag.userData.baseScale;
-                        bag.scale.set(bs.x * ease, bs.y * ease, bs.z * ease);
+                for (const pair of bags) {
+                    for (const bag of [pair.front, pair.back]) {
+                        if (bag.visible && bag.userData.popTimer > 0) {
+                            bag.userData.popTimer -= dt;
+                            const t = 1 - Math.max(0, bag.userData.popTimer) / 0.2; // 0→1
+                            // Elastic ease-out for a satisfying pop
+                            const ease = t < 1 ? 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.5) : 1;
+                            const bs = bag.userData.baseScale;
+                            bag.scale.set(bs.x * ease, bs.y * ease, bs.z * ease);
+                        }
                     }
                 }
             }
