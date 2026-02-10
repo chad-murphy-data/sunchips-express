@@ -145,8 +145,8 @@ export class DeliveryAnimator {
             const seat = this.seatPositions[seatIdx];
             this.characters[i].position.copy(seat);
 
-            // Face forward in the cart (cart faces -Z in local space)
-            this.characters[i].rotation.y = Math.PI;
+            // Face forward in the cart
+            this.characters[i].rotation.y = 0;
 
             // Play seated animation
             this.playAnimation(i, 'racingIdle');
@@ -224,7 +224,7 @@ export class DeliveryAnimator {
         // Position on the assigned seat
         const seat = this.seatPositions[seatIdx];
         char.position.copy(seat);
-        char.rotation.set(0, Math.PI, 0); // face forward
+        char.rotation.set(0, 0, 0); // face forward
 
         // Update seat assignment
         this.seatAssignment[charIndex] = seatIdx;
