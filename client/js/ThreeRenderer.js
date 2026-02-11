@@ -292,6 +292,9 @@ export class ThreeRenderer {
         this.particles = [];
         this.screenShake = { active: false, intensity: 0, timer: 0 };
 
+        // Knockable obstacles: maps obstacle index -> { group, knocked, velocity, angVel }
+        this.knockableObstacles = [];
+
         // Loaded assets
         this.loadedModels = {};
         this.gltfLoader = new GLTFLoader();
@@ -1180,7 +1183,10 @@ export class ThreeRenderer {
         // Filter out barrier types that are now walls
         const barrierTypes = ['cubicle_wall', 'cubicle_wall_tall', 'filing_cabinet', 'filing_cabinet_short'];
 
-        for (const obstacle of track.obstacles) {
+        this.knockableObstacles = [];
+
+        for (let i = 0; i < track.obstacles.length; i++) {
+            const obstacle = track.obstacles[i];
             // Skip barrier types - they're rendered as walls now
             if (barrierTypes.includes(obstacle.type)) continue;
 
@@ -1220,6 +1226,12 @@ export class ThreeRenderer {
                 case 'arcade_machine':
                     obj = this.createArcadeMachine();
                     break;
+                case 'coffee_table':
+                    obj = this.createCoffeeTable();
+                    break;
+                case 'standing_person':
+                    obj = this.createStandingPerson();
+                    break;
                 default:
                     continue;
             }
@@ -1230,6 +1242,21 @@ export class ThreeRenderer {
                 // Random rotation for variety
                 obj.rotation.y = Math.random() * Math.PI * 2;
                 this.scene.add(obj);
+
+                // Track knockable obstacles for collision
+                if (obstacle.knockable) {
+                    this.knockableObstacles.push({
+                        group: obj,
+                        obstacleIndex: i,
+                        gameX: obstacle.x,
+                        gameY: obstacle.y,
+                        radius: obstacle.collisionRadius || 12,
+                        knocked: false,
+                        velocity: { x: 0, y: 0, z: 0 },
+                        angVel: { x: 0, y: 0, z: 0 },
+                        settled: false
+                    });
+                }
             }
         }
     }
@@ -1643,6 +1670,266 @@ export class ThreeRenderer {
         group.add(panel);
 
         return group;
+    }
+
+    createCoffeeTable() {
+        const glb = this.cloneModel('tableCoffee', 18);
+        if (glb) return glb;
+
+        // Procedural fallback
+        const group = new THREE.Group();
+        const m = this.materials;
+
+        // Table top - dark wood
+        const top = new THREE.Mesh(new THREE.BoxGeometry(28, 3, 28), m.darkWood);
+        top.position.y = 16;
+        top.castShadow = true;
+        top.receiveShadow = true;
+        group.add(top);
+
+        // Legs - chrome
+        const legGeo = new THREE.CylinderGeometry(1.2, 1.2, 14, 8);
+        for (const [x, z] of [[-10, -10], [10, -10], [-10, 10], [10, 10]]) {
+            const leg = new THREE.Mesh(legGeo, m.chrome);
+            leg.position.set(x, 7, z);
+            leg.castShadow = true;
+            group.add(leg);
+        }
+
+        // Coffee cup on table
+        const cupGeo = new THREE.CylinderGeometry(1.5, 1.2, 4, 8);
+        const cupMat = new THREE.MeshStandardMaterial({ color: 0xF5F5F0, roughness: 0.3 });
+        const cup = new THREE.Mesh(cupGeo, cupMat);
+        cup.position.set(4, 19, 3);
+        group.add(cup);
+
+        return group;
+    }
+
+    createStandingPerson() {
+        const group = new THREE.Group();
+
+        // Pick random shirt/pants colors for variety
+        const shirtColors = [0x3366AA, 0xCC4444, 0x44AA66, 0x996633, 0x884488, 0xDD8833];
+        const pantsColors = [0x333344, 0x444433, 0x2A2A3A, 0x3B3B2B];
+        const skinColors = [0xF5D0A9, 0xD2A67A, 0x8D5524, 0xC68642, 0xE8B89D];
+
+        const shirtColor = shirtColors[Math.floor(Math.random() * shirtColors.length)];
+        const pantsColor = pantsColors[Math.floor(Math.random() * pantsColors.length)];
+        const skinColor = skinColors[Math.floor(Math.random() * skinColors.length)];
+
+        const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.8 });
+        const pantsMat = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.8 });
+        const skinMat = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.7 });
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+        const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1A1A1A, roughness: 0.6 });
+
+        // Shoes
+        for (const side of [-2.5, 2.5]) {
+            const shoe = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 5), shoeMat);
+            shoe.position.set(side, 1, 0);
+            group.add(shoe);
+        }
+
+        // Legs (pants)
+        for (const side of [-2.5, 2.5]) {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(3.5, 16, 4), pantsMat);
+            leg.position.set(side, 10, 0);
+            leg.castShadow = true;
+            group.add(leg);
+        }
+
+        // Torso (shirt)
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(10, 14, 6), shirtMat);
+        torso.position.y = 25;
+        torso.castShadow = true;
+        group.add(torso);
+
+        // Arms
+        for (const side of [-6, 6]) {
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(3, 12, 3), shirtMat);
+            arm.position.set(side, 24, 0);
+            arm.castShadow = true;
+            group.add(arm);
+
+            // Hand
+            const hand = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3, 2.5), skinMat);
+            hand.position.set(side, 17, 0);
+            group.add(hand);
+        }
+
+        // Neck
+        const neck = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 3, 8), skinMat);
+        neck.position.y = 33.5;
+        group.add(neck);
+
+        // Head
+        const head = new THREE.Mesh(new THREE.BoxGeometry(6, 7, 6), skinMat);
+        head.position.y = 38;
+        head.castShadow = true;
+        group.add(head);
+
+        // Hair
+        const hair = new THREE.Mesh(new THREE.BoxGeometry(6.5, 3, 6.5), hairMat);
+        hair.position.y = 41;
+        group.add(hair);
+
+        return group;
+    }
+
+    // Knock an obstacle when the cart hits it
+    knockObstacle(obstacleData, vehicleHeading, vehicleSpeed) {
+        if (obstacleData.knocked) return;
+        obstacleData.knocked = true;
+
+        // Direction the cart is traveling
+        const dirX = Math.cos(vehicleHeading);
+        const dirZ = Math.sin(vehicleHeading);
+
+        // Launch speed proportional to vehicle speed
+        const knockSpeed = Math.min(vehicleSpeed * 0.4, 200);
+
+        // Add some randomness for visual interest
+        const spreadX = (Math.random() - 0.5) * 60;
+        const spreadZ = (Math.random() - 0.5) * 60;
+
+        obstacleData.velocity = {
+            x: dirX * knockSpeed + spreadX,
+            y: 40 + Math.random() * 40,   // Launch upward
+            z: dirZ * knockSpeed + spreadZ
+        };
+
+        // Random tumble rotation
+        obstacleData.angVel = {
+            x: (Math.random() - 0.5) * 8,
+            y: (Math.random() - 0.5) * 6,
+            z: (Math.random() - 0.5) * 8
+        };
+    }
+
+    updateKnockedObstacles(dt) {
+        for (const obs of this.knockableObstacles) {
+            if (!obs.knocked || obs.settled) continue;
+
+            const g = obs.group;
+            const v = obs.velocity;
+
+            // Apply velocity
+            g.position.x += v.x * dt;
+            g.position.y += v.y * dt;
+            g.position.z += v.z * dt;
+
+            // Gravity
+            v.y -= 120 * dt;
+
+            // Tumble
+            g.rotation.x += obs.angVel.x * dt;
+            g.rotation.y += obs.angVel.y * dt;
+            g.rotation.z += obs.angVel.z * dt;
+
+            // Floor collision - settle
+            if (g.position.y <= 0) {
+                g.position.y = 0;
+
+                // If moving slow enough, settle on the ground
+                if (Math.abs(v.y) < 20) {
+                    v.x *= 0.7;
+                    v.y = 0;
+                    v.z *= 0.7;
+
+                    // Dampen rotation
+                    obs.angVel.x *= 0.8;
+                    obs.angVel.y *= 0.8;
+                    obs.angVel.z *= 0.8;
+
+                    // Check if fully settled
+                    const totalSpeed = Math.abs(v.x) + Math.abs(v.z);
+                    const totalRot = Math.abs(obs.angVel.x) + Math.abs(obs.angVel.y) + Math.abs(obs.angVel.z);
+                    if (totalSpeed < 5 && totalRot < 0.5) {
+                        obs.settled = true;
+                        // Leave it tipped over on the ground
+                    }
+                } else {
+                    // Bounce off floor
+                    v.y = Math.abs(v.y) * 0.3;
+                    v.x *= 0.8;
+                    v.z *= 0.8;
+                }
+            }
+
+            // Air drag
+            v.x *= (1 - 0.5 * dt);
+            v.z *= (1 - 0.5 * dt);
+        }
+    }
+
+    checkObstacleCollisions(vehicle) {
+        const speed = Math.abs(vehicle.speed);
+        if (speed < 20) return;  // Must be moving to knock things
+
+        const vx = vehicle.x;
+        const vy = vehicle.y;
+        const cartRadius = 30;  // Approximate cart collision circle
+
+        for (const obs of this.knockableObstacles) {
+            if (obs.knocked) continue;
+
+            // Distance check in game coords (x, z in Three.js = x, y in game)
+            const dx = vx - obs.gameX;
+            const dy = vy - obs.gameY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < cartRadius + obs.radius) {
+                this.knockObstacle(obs, vehicle.heading, speed);
+
+                // Small speed penalty for hitting stuff
+                vehicle.speed *= 0.92;
+
+                // Trigger a small collision effect (fewer particles than wall hit)
+                this.triggerObstacleHitEffect(obs.gameX, obs.gameY);
+            }
+        }
+    }
+
+    triggerObstacleHitEffect(worldX, worldY) {
+        // Smaller screen shake than wall collision
+        this.screenShake = { active: true, intensity: 1.5, timer: 0.15 };
+
+        // A few paper particles
+        for (let i = 0; i < 3; i++) {
+            const geo = new THREE.PlaneGeometry(
+                2 + Math.random() * 3,
+                3 + Math.random() * 4
+            );
+            const mat = new THREE.MeshStandardMaterial({
+                color: Math.random() > 0.3 ? 0xFAFAFA : 0xFFF8DC,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 1
+            });
+            const paper = new THREE.Mesh(geo, mat);
+            paper.position.set(worldX, 10 + Math.random() * 15, worldY);
+            paper.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI
+            );
+
+            this.scene.add(paper);
+
+            const velocity = {
+                x: (Math.random() - 0.5) * 60,
+                y: 20 + Math.random() * 30,
+                z: (Math.random() - 0.5) * 60
+            };
+            const rotSpeed = {
+                x: (Math.random() - 0.5) * 6,
+                y: (Math.random() - 0.5) * 3,
+                z: (Math.random() - 0.5) * 5
+            };
+
+            this.particles.push(new Particle(paper, velocity, 1.2, rotSpeed));
+        }
     }
 
     buildCart() {
@@ -2199,6 +2486,12 @@ export class ThreeRenderer {
                 this.triggerSkidEffect(vehicle.x, vehicle.y, vehicle.heading);
             }
         }
+
+        // Update knocked-over obstacles physics
+        this.updateKnockedObstacles(dt);
+
+        // Check for obstacle knockovers
+        this.checkObstacleCollisions(vehicle);
 
         // Update delivery animation (always tick — handles seated idle animation too)
         this.deliveryAnimator.update(dt);

@@ -171,9 +171,11 @@ export class Track {
             return n - Math.floor(n);
         };
 
-        const nearTypes = ['office_chair', 'water_cooler', 'printer', 'recycling_bin', 'potted_ficus'];
+        const nearTypes = ['office_chair', 'water_cooler', 'printer', 'recycling_bin', 'potted_ficus',
+            'coffee_table', 'standing_person', 'potted_ficus', 'office_chair', 'standing_person'];
         const interiorTypes = ['desk_with_monitor', 'office_chair', 'conference_table',
-            'potted_ficus', 'whiteboard', 'printer', 'arcade_machine'];
+            'potted_ficus', 'whiteboard', 'printer', 'arcade_machine', 'coffee_table',
+            'standing_person', 'standing_person', 'office_chair'];
 
         // Near-track furniture: offroad tiles adjacent to road
         for (let y = 0; y < this.height; y++) {
@@ -184,13 +186,16 @@ export class Track {
                     this._isRoad(x, y-1) || this._isRoad(x, y+1);
                 if (!adjRoad) continue;
 
-                if (seededRandom(x, y, 1) < 0.15) {
+                if (seededRandom(x, y, 1) < 0.22) {
                     const typeIdx = Math.floor(seededRandom(x, y, 2) * nearTypes.length);
+                    const type = nearTypes[typeIdx];
                     this.obstacles.push({
                         x: (x + 0.5) * ts,
                         y: (y + 0.5) * ts,
-                        type: nearTypes[typeIdx],
-                        scaleX: 1.3, scaleY: 1.3
+                        type: type,
+                        scaleX: 1.3, scaleY: 1.3,
+                        knockable: true,
+                        collisionRadius: this._getObstacleRadius(type)
                     });
                 }
             }
@@ -206,12 +211,15 @@ export class Track {
                 if (adjRoad) continue;
 
                 const typeIdx = Math.floor(seededRandom(x, y, 3) * interiorTypes.length);
+                const type = interiorTypes[typeIdx];
                 this.obstacles.push({
                     x: (x + seededRandom(x, y, 4)) * ts,
                     y: (y + seededRandom(x, y, 5)) * ts,
-                    type: interiorTypes[typeIdx],
+                    type: type,
                     scaleX: 1.5 + seededRandom(x, y, 6) * 0.5,
-                    scaleY: 1.5 + seededRandom(x, y, 6) * 0.5
+                    scaleY: 1.5 + seededRandom(x, y, 6) * 0.5,
+                    knockable: true,
+                    collisionRadius: this._getObstacleRadius(type)
                 });
             }
         }
@@ -225,9 +233,30 @@ export class Track {
                 x: (sx + 0.5) * ts,
                 y: (sy + 0.5) * ts,
                 type: 'caution_sign',
-                scaleX: 2, scaleY: 2
+                scaleX: 2, scaleY: 2,
+                knockable: true,
+                collisionRadius: 10
             });
         }
+    }
+
+    _getObstacleRadius(type) {
+        const radii = {
+            office_chair: 12,
+            water_cooler: 10,
+            printer: 15,
+            recycling_bin: 8,
+            potted_ficus: 10,
+            coffee_table: 18,
+            standing_person: 10,
+            desk_with_monitor: 25,
+            conference_table: 30,
+            whiteboard: 20,
+            vending_machine: 18,
+            arcade_machine: 16,
+            caution_sign: 10,
+        };
+        return radii[type] || 12;
     }
 
     // Scan tile map and return wall edge segments for the renderer.
