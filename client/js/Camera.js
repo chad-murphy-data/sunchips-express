@@ -10,7 +10,7 @@ export class Camera {
         this.angle = 0;
 
         // Camera height above ground plane
-        this.height = 150;
+        this.height = 200;
 
         // Field of view parameters
         this.fov = 90;  // degrees

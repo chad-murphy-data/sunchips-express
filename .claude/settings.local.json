@@ -14,7 +14,21 @@
       "Bash(powershell:*)",
       "Bash(for dir in \"C:/Users/chadm/Desktop/car-racing/client/assets\"/*/)",
       "Bash(npm start)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(del \"C:\\\\Users\\\\chadm\\\\Desktop\\\\car-racing\\\\scan_zip.ps1\" \"C:\\\\Users\\\\chadm\\\\Desktop\\\\car-racing\\\\extract_kenney.ps1\")",
+      "Bash(git -C \"C:\\\\Users\\\\chadm\\\\Desktop\\\\car-racing\" status)",
+      "Bash(git -C \"C:\\\\Users\\\\chadm\\\\Desktop\\\\car-racing\" diff client/js/ThreeRenderer.js client/js/main.js)",
+      "Bash(git -C \"C:\\\\Users\\\\chadm\\\\Desktop\\\\car-racing\" log --oneline -5)",
+      "Bash(git -C \"C:\\\\Users\\\\chadm\\\\Desktop\\\\car-racing\" add client/js/DeliveryAnimator.js client/js/ThreeRenderer.js client/js/main.js client/assets/kenney-animated/)",
+      "Bash(git -C:*)",
+      "Bash(unzip:*)",
+      "Bash(ls:*)",
+      "Bash(start:*)",
+      "Bash(python3:*)",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "Bash(tasklist:*)"
     ]
   }
 }

@@ -17,7 +17,8 @@ export class Vehicle {
         this.COLLISION_FRONT = 35;       // Distance from center to front
 
         // Physics constants - SUPERCAR speed, golf cart handling
-        this.MAX_SPEED = 500;           // Max forward speed - terrifyingly fast
+        // DEBUG: Cap speed at ~40 MPH for testing (set to 500 for production)
+        this.MAX_SPEED = 120;           // Debug cap (~40 MPH) - change to 500 for full speed
         this.MAX_REVERSE_SPEED = 60;    // Reverse is punishment (was 80)
         this.ACCELERATION = 180;         // Slower acceleration for better control (was 280)
         this.REVERSE_ACCEL = 40;         // Reversing is painfully slow (was 60)
@@ -45,6 +46,12 @@ export class Vehicle {
 
         // Freeze flag for delivery stops
         this.frozen = false;
+
+        // Surface friction modifiers (updated each frame from track collision)
+        this.surfaceFriction = 1.0;
+        this.brakeFrictionMult = 1.0;
+        this.steerFrictionMult = 1.0;
+        this.currentSurface = 'asphalt';
     }
 
     // Get collision check points (front corners and center)
@@ -147,7 +154,7 @@ export class Vehicle {
         if (pedalInput > 0) {
             if (this.speed < 0) {
                 // Pressing gas while reversing = brake first
-                this.speed += this.BRAKE_FORCE * dt;
+                this.speed += this.BRAKE_FORCE * this.brakeFrictionMult * dt;
             } else {
                 // Normal forward acceleration
                 this.speed += this.ACCELERATION * dt;
@@ -155,7 +162,7 @@ export class Vehicle {
         } else if (pedalInput < 0) {
             if (this.speed > 0) {
                 // Pressing brake while moving forward = brake
-                this.speed -= this.BRAKE_FORCE * dt;
+                this.speed -= this.BRAKE_FORCE * this.brakeFrictionMult * dt;
             } else {
                 // Already stopped or reversing = reverse acceleration
                 this.speed -= this.REVERSE_ACCEL * dt;
@@ -183,8 +190,8 @@ export class Vehicle {
             const speedFactor = 1 - (absSpeed / this.MAX_SPEED) * speedTurnReduce;
             const direction = this.speed >= 0 ? 1 : -1;  // Invert steering when reversing
 
-            // Target angular velocity based on input
-            const targetTurnRate = steerInput * this.TURN_RATE * speedFactor * direction;
+            // Target angular velocity based on input (surface affects grip)
+            const targetTurnRate = steerInput * this.TURN_RATE * speedFactor * direction * this.steerFrictionMult;
 
             // Smooth toward target (steering inertia)
             this.angularVelocity += (targetTurnRate - this.angularVelocity) * this.STEER_RESPONSE * dt;
@@ -265,9 +272,24 @@ export class Vehicle {
                 this.y = newY + wallCollision.normalY * 20;
 
             } else {
-                // Move to new position (no grass slowdown - it's all office floor)
+                // Move to new position
                 this.x = newX;
                 this.y = newY;
+            }
+
+            // Query surface at current position for friction modifiers
+            const surfaceCheck = track.checkCollision(this.x, this.y);
+            if (surfaceCheck) {
+                this.surfaceFriction = surfaceCheck.friction || 1.0;
+                this.brakeFrictionMult = surfaceCheck.brakeMult || 1.0;
+                this.steerFrictionMult = surfaceCheck.steerMult || 1.0;
+                this.currentSurface = surfaceCheck.surface || 'asphalt';
+
+                // Speed reduction on low-friction surfaces
+                if (this.surfaceFriction < 1.0 && Math.abs(this.speed) > 0) {
+                    const drag = (1 - this.surfaceFriction) * 0.3 * dt;
+                    this.speed *= (1 - drag);
+                }
             }
         } else {
             // No track collision checking

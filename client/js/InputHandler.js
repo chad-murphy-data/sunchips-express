@@ -223,6 +223,49 @@ export class InputHandler {
         canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
     }
 
+    // === Desktop Solo Controls (both steering + pedals on screen) ===
+
+    setupDesktopSoloControls() {
+        const container = document.getElementById('solo-controls');
+        if (!container) return;
+
+        container.classList.add('active');
+
+        const bindBtn = (id, key) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+
+            const press = (e) => {
+                e.preventDefault();
+                this.keys[key] = true;
+                btn.classList.add('pressed');
+            };
+            const release = (e) => {
+                e.preventDefault();
+                this.keys[key] = false;
+                btn.classList.remove('pressed');
+            };
+
+            // Mouse events for desktop
+            btn.addEventListener('mousedown', press);
+            btn.addEventListener('mouseup', release);
+            btn.addEventListener('mouseleave', release);
+
+            // Touch events for hybrid devices
+            btn.addEventListener('touchstart', press, { passive: false });
+            btn.addEventListener('touchend', release, { passive: false });
+            btn.addEventListener('touchcancel', release, { passive: false });
+        };
+
+        // Steering: A (left) / D (right)
+        bindBtn('solo-left', 'a');
+        bindBtn('solo-right', 'd');
+
+        // Pedals: J (brake) / L (gas)
+        bindBtn('solo-brake', 'j');
+        bindBtn('solo-gas', 'l');
+    }
+
     updateTouchLabels(role) {
         if (!this.isMobile) return;
 

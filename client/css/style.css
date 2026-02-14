@@ -582,6 +582,80 @@ body {
     display: none;
 }
 
+/* ===== Desktop Solo Controls ===== */
+#solo-controls {
+    display: none;
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    pointer-events: auto;
+    gap: 16px;
+    align-items: center;
+}
+
+#solo-controls.active {
+    display: flex;
+}
+
+#solo-steering, #solo-pedals {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.solo-label {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+}
+
+.solo-btn {
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    font-weight: bold;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    width: 50px;
+    height: 44px;
+    text-align: center;
+    user-select: none;
+    cursor: pointer;
+    transition: background 0.05s;
+}
+
+.solo-btn:active,
+.solo-btn.pressed {
+    background: rgba(255, 215, 0, 0.4);
+    border-color: #ffd700;
+}
+
+.solo-btn.solo-gas {
+    color: #0f0;
+    border-color: rgba(0, 255, 0, 0.3);
+}
+
+.solo-btn.solo-gas:active,
+.solo-btn.solo-gas.pressed {
+    background: rgba(0, 255, 0, 0.3);
+    border-color: #0f0;
+}
+
+.solo-btn.solo-brake {
+    color: #f44;
+    border-color: rgba(255, 68, 68, 0.3);
+}
+
+.solo-btn.solo-brake:active,
+.solo-btn.solo-brake.pressed {
+    background: rgba(255, 68, 68, 0.3);
+    border-color: #f44;
+}
+
 /* Mobile fullscreen layout */
 .touch-active {
     width: 100vw !important;

@@ -189,6 +189,8 @@ class Game {
         document.getElementById('local-coop-button').addEventListener('click', () => {
             this.mode = 'local';
             this.input.setNetworkMode(false);
+            // Enable on-screen solo controls for desktop testing
+            this.input.setupDesktopSoloControls();
             this.startGame();
         });
 
@@ -448,6 +450,11 @@ class Game {
             this.vehicle.lastCollisionForce = 0;
         }
 
+        // Water splash effect when driving through creek
+        if (this.vehicle.currentSurface === 'water' && Math.abs(this.vehicle.speed) > 10) {
+            this.threeRenderer.triggerSplashEffect(this.vehicle.x, this.vehicle.y);
+        }
+
         const networkRole = this.mode !== 'local' ? this.input.networkRole : null;
         this.ui.update(this.vehicle, this.input.rolesSwapped, networkRole);
     }
@@ -685,6 +692,7 @@ class Game {
 // Start the game when the page loads
 window.addEventListener('load', async () => {
     const game = new Game();
+    window._game = game; // Debug: expose game for testing
     try {
         await game.init();
     } catch (error) {
